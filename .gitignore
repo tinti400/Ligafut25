@@ -1,0 +1,10 @@
+credenciais.json
+.streamlit/credenciais.json
+__pycache__/
+.env
+venv/
+*.pyc
+*.pyo
+*.pyd
+*.sqlite3
+*.log

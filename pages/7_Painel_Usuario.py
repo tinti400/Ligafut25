@@ -1,0 +1,3 @@
+# Arquivo: 7_Painel_Usuario.py
+
+# Código completo viria aqui...

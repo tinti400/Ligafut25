@@ -1,0 +1,3 @@
+# Arquivo: 6_Admin_Mercado.py
+
+# Código completo viria aqui...

@@ -1,0 +1,3 @@
+# Arquivo: 3_Painel_Classificacao.py
+
+# Código completo viria aqui...

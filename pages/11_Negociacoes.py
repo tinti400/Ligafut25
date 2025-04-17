@@ -1,0 +1,3 @@
+# Arquivo: 11_Negociacoes.py
+
+# Código completo viria aqui...

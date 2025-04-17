@@ -1,0 +1,3 @@
+# Arquivo: 8_Financas.py
+
+# Código completo viria aqui...

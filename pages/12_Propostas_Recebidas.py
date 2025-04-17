@@ -1,0 +1,3 @@
+# Arquivo: 12_Propostas_Recebidas.py
+
+# Código completo viria aqui...

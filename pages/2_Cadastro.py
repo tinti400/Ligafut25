@@ -1,0 +1,3 @@
+# Arquivo: 2_Cadastro.py
+
+# Código completo viria aqui...

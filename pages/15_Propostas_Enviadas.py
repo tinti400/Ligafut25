@@ -1,0 +1,3 @@
+# Arquivo: 15_Propostas_Enviadas.py
+
+# Código completo viria aqui...
