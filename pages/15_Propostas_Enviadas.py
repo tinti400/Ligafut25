@@ -1,77 +1,58 @@
 import streamlit as st
-import firebase_admin
-from firebase_admin import credentials, firestore
+from google.oauth2 import service_account
+from google.cloud import firestore
 from utils import verificar_login
+from datetime import datetime
 
 st.set_page_config(page_title="Propostas Enviadas", layout="wide")
 
-# Inicializar Firebase
-if not firebase_admin._apps:
-    cred = credentials.Certificate("credenciais.json")
-    firebase_admin.initialize_app(cred)
+# 🔐 Inicializa Firebase com st.secrets
+if "firebase" not in st.session_state:
+    try:
+        cred = service_account.Credentials.from_service_account_info(st.secrets["firebase"])
+        db = firestore.Client(credentials=cred, project=st.secrets["firebase"]["project_id"])
+        st.session_state["firebase"] = db
+    except Exception as e:
+        st.error(f"Erro ao conectar ao Firebase: {e}")
+        st.stop()
+else:
+    db = st.session_state["firebase"]
 
-db = firestore.client()
-
-# Verificar login
+# ✅ Verifica login
 verificar_login()
 
-id_time = st.session_state.id_time
-nome_time = st.session_state.nome_time
+id_time = st.session_state["id_time"]
+nome_time = st.session_state["nome_time"]
 
 st.title("📤 Propostas Enviadas")
-st.markdown(f"### Time: {nome_time}")
 
-# Buscar propostas enviadas
-propostas_ref = db.collection("negociacoes").where("id_time_origem", "==", id_time).stream()
-propostas = [doc.to_dict() | {"id_doc": doc.id} for doc in propostas_ref]
+# 🔎 Buscar propostas enviadas
+propostas_ref = db.collection("negociacoes").where("id_time_origem", "==", id_time).order_by("timestamp", direction=firestore.Query.DESCENDING).stream()
+propostas = [doc.to_dict() for doc in propostas_ref]
 
 if not propostas:
-    st.info("Você não enviou nenhuma proposta ainda.")
+    st.info("Você ainda não enviou nenhuma proposta.")
 else:
-    st.subheader("📋 Propostas em andamento")
-
     for proposta in propostas:
-        jogador = proposta.get("jogador", {})
-        nome_jogador = proposta.get("nome_jogador", "Desconhecido")
-        posicao = jogador.get("posicao", "N/D")
-        overall = jogador.get("overall", "N/A")
-        valor = proposta.get("valor_proposta", 0)
-        tipo = proposta.get("tipo_proposta", "Não informado")
+        jogador = proposta.get("nome_jogador", "Desconhecido")
+        tipo = proposta.get("tipo_proposta", "N/A")
         status = proposta.get("status", "pendente")
+        valor = proposta.get("valor_proposta", 0)
         jogadores_oferecidos = proposta.get("jogadores_oferecidos", [])
-        id_time_destino = proposta.get("id_time_destino")
+        data = proposta.get("timestamp")
+
+        if isinstance(data, datetime):
+            data_str = data.strftime('%d/%m/%Y %H:%M')
+        else:
+            data_str = "Data não disponível"
 
         st.markdown("---")
-        col1, col2, col3, col4 = st.columns([2, 2, 1.5, 2])
-        with col1:
-            st.write(f"**🎯 Jogador Desejado:** {nome_jogador}")
-        with col2:
-            st.write(f"**Posição:** {posicao}")
-        with col3:
-            st.write(f"**Overall:** {overall}")
-        with col4:
-            st.write(f"**Tipo de Proposta:** {tipo}")
+        st.markdown(f"**🎯 Jogador Alvo:** {jogador}")
+        st.markdown(f"**📌 Tipo de Proposta:** {tipo}")
+        st.markdown(f"**💬 Status:** {status.capitalize()}")
+        st.markdown(f"**💰 Valor Oferecido:** R$ {valor:,.0f}".replace(",", "."))
+        st.markdown(f"**📅 Enviada em:** {data_str}")
 
-        if tipo != "Somente Dinheiro":
-            st.markdown("**👥 Jogadores Oferecidos:**")
-            for j in jogadores_oferecidos:
-                st.write(f"- {j.get('nome')} ({j.get('posicao')}) - Overall {j.get('overall')} - R$ {j.get('valor',0):,.0f}")
-
-        if tipo != "Troca Simples":
-            st.write(f"**💰 Valor em dinheiro:** R$ {valor:,.0f}")
-
-        st.write(f"**📌 Status da proposta:** `{status}`")
-
-        if status == "pendente":
-            if st.button("❌ Cancelar Proposta", key=f"cancelar_{proposta['id_doc']}"):
-                db.collection("negociacoes").document(proposta["id_doc"]).delete()
-                st.warning("Proposta cancelada.")
-                st.rerun()
-
-        elif status == "pendente" and proposta.get("foi_contra_proposta", False):
-            st.warning("⚠️ Você recebeu uma contra proposta com novo valor!")
-
-        elif status == "recusada":
-            st.error("❌ Sua proposta foi recusada.")
-        elif status == "aceita":
-            st.success("✅ Sua proposta foi aceita!")
+        if jogadores_oferecidos:
+            nomes = ", ".join([j.get("nome", "") for j in jogadores_oferecidos])
+            st.markdown(f"**👥 Jogadores Oferecidos:** {nomes}")
