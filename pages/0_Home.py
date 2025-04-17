@@ -1,23 +1,25 @@
 import streamlit as st
 
-st.set_page_config(page_title="LigaFut", layout="centered")
+st.set_page_config(page_title="LigaFut", layout="wide")
 
-# Estilo visual
-st.markdown(
-    """
+# Estilo visual centralizado com responsividade e fundo escuro
+st.markdown("""
     <style>
         body {
             background-color: #0d1117;
         }
-        .main {
-            background-color: #0d1117;
+        .container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            height: 80vh;
             color: white;
         }
         .logo {
             font-size: 48px;
             font-weight: bold;
             color: #00FF99;
-            text-align: center;
             margin-bottom: 10px;
         }
         .slogan {
@@ -26,21 +28,13 @@ st.markdown(
             color: #cccccc;
             margin-bottom: 40px;
         }
-        .botao {
-            display: flex;
-            justify-content: center;
+        .button-container {
             margin-top: 20px;
         }
     </style>
-    """,
-    unsafe_allow_html=True
-)
-
-# Conteúdo centralizado
-st.markdown("<div class='logo'>🏆 LigaFut</div>", unsafe_allow_html=True)
-st.markdown("<div class='slogan'>Simule qualquer campeonato de futebol com seus amigos</div>", unsafe_allow_html=True)
-
-# Botão para login
-if st.button("Entrar"):
-    st.switch_page("pages/1_Login.py")
+    <div class='container'>
+        <div class='logo'>🏆 LigaFut 2025</div>
+        <div class='slogan'>Acesse o menu lateral para navegar pelo sistema.</div>
+    </div>
+""", unsafe_allow_html=True)
 
