@@ -1,68 +1,70 @@
 import streamlit as st
-import firebase_admin
-from firebase_admin import credentials, firestore
+from google.oauth2 import service_account
+from google.cloud import firestore
+from utils import verificar_login
 
 st.set_page_config(page_title="Administração de Usuários", layout="wide")
 
-# Inicializar Firebase
-if not firebase_admin._apps:
-    cred = credentials.Certificate("credenciais.json")
-    firebase_admin.initialize_app(cred)
+# 🔐 Inicializa Firebase com st.secrets
+if "firebase" not in st.session_state:
+    try:
+        cred = service_account.Credentials.from_service_account_info(st.secrets["firebase"])
+        db = firestore.Client(credentials=cred, project=st.secrets["firebase"]["project_id"])
+        st.session_state["firebase"] = db
+    except Exception as e:
+        st.error(f"Erro ao conectar ao Firebase: {e}")
+        st.stop()
+else:
+    db = st.session_state["firebase"]
 
-db = firestore.client()
+# Verifica se está logado
+verificar_login()
 
 st.title("👥 Administração de Usuários")
 
-usuarios = []
+# Formulário para novo usuário
+with st.expander("➕ Adicionar Novo Usuário"):
+    usuario = st.text_input("Usuário (e-mail)").strip().lower()
+    senha = st.text_input("Senha", type="password")
+    id_time = st.text_input("ID do Time")
+    nome_time = st.text_input("Nome do Time")
 
-# Buscar usuários na raiz do Firestore
-usuarios_ref = db.collection("usuarios").stream()
-for doc in usuarios_ref:
-    data = doc.to_dict()
-    usuarios.append({
-        "email": data.get("usuario"),  # Campo correto no seu banco
-        "id_time": data.get("id_time"),
-        "nome_time": data.get("nome_time", "Não Vinculado"),
-        "doc_id": doc.id
-    })
+    if st.button("✅ Cadastrar Usuário"):
+        if usuario and senha and id_time and nome_time:
+            usuarios_ref = db.collection("usuarios")
+            existente = list(usuarios_ref.where("usuario", "==", usuario).stream())
 
-# Buscar todos os times na raiz do Firestore
-times_ref = db.collection("times").stream()
-times = {doc.id: doc.to_dict().get("nome", "Sem Nome") for doc in times_ref}
-
-# Interface
-if usuarios:
-    emails = [u["email"] for u in usuarios if u["email"] is not None]
-    email_selecionado = st.selectbox("Selecione o usuário para editar:", emails)
-
-    usuario = next((u for u in usuarios if u["email"] == email_selecionado), None)
-
-    if usuario:
-        st.write(f"📧 **Email:** {usuario['email']}")
-        st.write(f"🆔 **ID Time Atual:** {usuario['id_time']}")
-        st.write(f"⚽ **Nome Time Atual:** {usuario['nome_time']}")
-
-        if times:
-            novo_id_time = st.selectbox(
-                "Selecione o novo time:",
-                list(times.keys()),
-                format_func=lambda x: times[x]
-            )
-
-            if st.button("✅ Atualizar Time do Usuário"):
-                db.collection("usuarios").document(usuario["doc_id"]).update({
-                    "id_time": novo_id_time,
-                    "nome_time": times[novo_id_time]
+            if existente:
+                st.warning("⚠️ Este usuário já está cadastrado.")
+            else:
+                usuarios_ref.add({
+                    "usuario": usuario,
+                    "senha": senha,
+                    "id_time": id_time,
+                    "nome_time": nome_time
                 })
-                st.success("Usuário atualizado com sucesso!")
+                st.success("Usuário cadastrado com sucesso!")
                 st.rerun()
         else:
-            st.warning("⚠️ Nenhum time encontrado.")
-else:
-    st.warning("⚠️ Nenhum usuário encontrado.")
+            st.warning("Preencha todos os campos.")
 
-st.divider()
-st.subheader("📋 Times Cadastrados:")
+st.markdown("---")
 
-for id_time, nome_time in times.items():
-    st.write(f"🆔 {id_time} | 🏷️ {nome_time}")
+# Lista de usuários cadastrados
+st.subheader("📋 Lista de Usuários Cadastrados")
+usuarios = db.collection("usuarios").stream()
+
+for doc in usuarios:
+    dados = doc.to_dict()
+    col1, col2, col3, col4 = st.columns([3, 2, 2, 1])
+    with col1:
+        st.text(f"📧 {dados.get('usuario')}")
+    with col2:
+        st.text(f"🧾 Time: {dados.get('nome_time')}")
+    with col3:
+        st.text(f"🔢 ID Time: {dados.get('id_time')}")
+    with col4:
+        if st.button("🗑️ Excluir", key=f"excluir_{doc.id}"):
+            db.collection("usuarios").document(doc.id).delete()
+            st.success("Usuário excluído com sucesso!")
+            st.rerun()
