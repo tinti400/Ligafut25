@@ -1,16 +1,21 @@
 import streamlit as st
-import firebase_admin
-from firebase_admin import credentials, firestore
+from google.oauth2 import service_account
+from google.cloud import firestore
 from utils import verificar_login
 
 st.set_page_config(page_title="Negociações entre Clubes", layout="wide")
 
 # Inicializar Firebase
-if not firebase_admin._apps:
-    cred = credentials.Certificate("credenciais.json")
-    firebase_admin.initialize_app(cred)
-
-db = firestore.client()
+if "firebase" not in st.session_state:
+    try:
+        cred = service_account.Credentials.from_service_account_info(st.secrets["firebase"])
+        db = firestore.Client(credentials=cred, project=st.secrets["firebase"]["project_id"])
+        st.session_state["firebase"] = db
+    except Exception as e:
+        st.error(f"Erro ao conectar ao Firebase: {e}")
+        st.stop()
+else:
+    db = st.session_state["firebase"]
 
 # Verificar login
 verificar_login()
