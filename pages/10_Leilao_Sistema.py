@@ -1,135 +1,85 @@
-# 10_Leilao_Sistema.py
 import streamlit as st
-import firebase_admin
-from firebase_admin import credentials, firestore
-from datetime import datetime, timezone, timedelta
-from streamlit_autorefresh import st_autorefresh
-from utils import verificar_login, registrar_movimentacao
+from firebase_admin import firestore, credentials, initialize_app
+import datetime
+import time
 
-st.set_page_config(page_title="Leilão do Sistema", layout="wide")
+# Configuração da página
+st.set_page_config(page_title="Leilão - LigaFut", layout="wide")
 
-# Firebase
-if not firebase_admin._apps:
-    cred = credentials.Certificate("credenciais.json")
-    firebase_admin.initialize_app(cred)
+# Inicializa Firebase
+if "firebase" not in st.session_state:
+    try:
+        cred = credentials.Certificate(st.secrets["firebase"])
+        initialize_app(cred)
+        st.session_state["firebase"] = firestore.client()
+    except Exception as e:
+        st.error(f"Erro ao conectar ao Firebase: {e}")
+        st.stop()
 
-db = firestore.client()
-verificar_login()
+db = st.session_state["firebase"]
 
-# Auto atualização a cada 5 segundos
-st_autorefresh(interval=5000, key="leilao_refresh")
+# Busca leilão ativo
+leilao_ref = db.collection("configuracoes").document("leilao_sistema")
+leilao_doc = leilao_ref.get()
+if not leilao_doc.exists or not leilao_doc.to_dict().get("ativo", False):
+    st.warning("⚠️ Nenhum leilão ativo no momento.")
+    st.stop()
 
-st.markdown("""
-    <style>
-        .card {
-            background-color: #f0f2f6;
-            padding: 20px;
-            margin-bottom: 15px;
-            border-radius: 10px;
-            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
-        }
-        .leilao-header {
-            font-size: 18px;
-            font-weight: bold;
-            color: #333;
-        }
-        .leilao-sub {
-            font-size: 14px;
-            color: #555;
-        }
-    </style>
-""", unsafe_allow_html=True)
+dados = leilao_doc.to_dict()
+fim = dados.get("fim")
+inicio = dados.get("inicio")
+jogador = dados.get("jogador", {})
+valor_atual = dados.get("valor_atual", 0)
+time_vencedor = dados.get("time_vencedor", "")
+id_time_usuario = st.session_state.get("id_time", "")
 
-st.title("⚽ Leilão do Sistema")
+# Cronômetro regressivo
+tempo_restante = (fim - datetime.datetime.now()).total_seconds()
+tempo_restante = max(0, int(tempo_restante))
+minutos, segundos = divmod(tempo_restante, 60)
 
-# Buscar leilões ativos
-leiloes_ref = db.collection("leiloes_livres").where("ativo", "==", True)
-leiloes = [doc.to_dict() | {"id": doc.id} for doc in leiloes_ref.stream()]
+st.markdown(f"<h2 style='text-align:center'>⏳ Tempo restante: {minutos:02d}:{segundos:02d}</h2>", unsafe_allow_html=True)
+st.markdown("---")
 
-if not leiloes:
-    st.info("Nenhum leilão ativo no momento.")
+# Exibição do jogador
+col1, col2, col3, col4 = st.columns([2, 4, 2, 2])
+with col1:
+    st.subheader(jogador.get("posição", ""))
+with col2:
+    st.subheader(jogador.get("nome", ""))
+with col3:
+    st.metric("⭐ Overall", jogador.get("overall", ""))
+with col4:
+    st.metric("💰 Lance Atual", f"R$ {valor_atual:,.0f}".replace(",", "."))
+
+st.markdown("---")
+
+# Lances
+if tempo_restante > 0:
+    novo_lance = st.number_input("💸 Seu lance (mínimo: R$100.000 acima)", min_value=valor_atual + 100_000, step=100_000)
+    if st.button("💥 Fazer Lance"):
+        try:
+            time_ref = db.collection("times").document(id_time_usuario)
+            saldo = time_ref.get().to_dict().get("saldo", 0)
+
+            if novo_lance > saldo:
+                st.error("❌ Saldo insuficiente.")
+            else:
+                novo_fim = fim
+                agora = datetime.datetime.now()
+                if (fim - agora).total_seconds() <= 15:
+                    novo_fim = agora + datetime.timedelta(seconds=15)
+
+                leilao_ref.update({
+                    "valor_atual": novo_lance,
+                    "time_vencedor": id_time_usuario,
+                    "fim": novo_fim
+                })
+
+                st.success(f"✅ Lance de R$ {novo_lance:,.0f} enviado!".replace(",", "."))
+                st.rerun()
+        except Exception as e:
+            st.error(f"Erro ao registrar lance: {e}")
 else:
-    for leilao in leiloes:
-        jogador = leilao.get("jogador", {})
-        nome = jogador.get("nome", "Desconhecido")
-        posicao = jogador.get("posicao", "-")
-        overall = jogador.get("overall", "-")
-        valor_atual = leilao.get("valor_atual", 0)
-        fim = leilao.get("fim")
-        ultimo_lance = leilao.get("ultimo_lance")
-        id_time_vencedor = leilao.get("id_time_vencedor")
-
-        tempo_restante = 0
-        if isinstance(fim, datetime):
-            tempo_restante = int((fim - datetime.now(timezone.utc)).total_seconds())
-
-        with st.container():
-            st.markdown("<div class='card'>", unsafe_allow_html=True)
-            col1, col2, col3, col4 = st.columns([3, 2, 2, 3])
-            with col1:
-                st.markdown(f"<div class='leilao-header'>🎽 {nome}</div>", unsafe_allow_html=True)
-                st.markdown(f"<div class='leilao-sub'>Posição: {posicao} | Overall: {overall}</div>", unsafe_allow_html=True)
-            with col2:
-                st.markdown(f"<div class='leilao-sub'>Valor Atual:</div>")
-                st.markdown(f"<b>R$ {valor_atual:,.0f}</b>", unsafe_allow_html=True)
-            with col3:
-                st.markdown(f"<div class='leilao-sub'>Tempo Restante:</div>")
-                st.markdown(f"<b>{max(0, tempo_restante)} seg</b>", unsafe_allow_html=True)
-            with col4:
-                if tempo_restante > 0:
-                    novo_lance = st.number_input("Lance", min_value=valor_atual + 100_000, step=100_000, key=f"lance_{leilao['id']}")
-                    if st.button("📤 Dar Lance", key=f"btn_{leilao['id']}"):
-                        db.collection("leiloes_livres").document(leilao['id']).update({
-                            "valor_atual": novo_lance,
-                            "ultimo_lance": st.session_state.usuario,
-                            "id_time_vencedor": st.session_state.id_time,
-                            "fim": datetime.now(timezone.utc) + timedelta(seconds=15)
-                        })
-                        st.success("Lance enviado com sucesso!")
-                        st.rerun()
-                else:
-                    st.markdown("<span style='color:red;'>⛔ Leilão Encerrado</span>", unsafe_allow_html=True)
-
-            st.markdown("</div>", unsafe_allow_html=True)
-
-        # Finalizar leilão com vencedor
-        if tempo_restante <= 0 and id_time_vencedor:
-            doc_ref = db.collection("leiloes_livres").document(leilao["id"])
-            jogador["valor"] = valor_atual
-
-            db.collection("times").document(id_time_vencedor).collection("elenco").add(jogador)
-
-            time_ref = db.collection("times").document(id_time_vencedor)
-            time_doc = time_ref.get()
-            saldo_atual = time_doc.to_dict().get("saldo", 0)
-            time_ref.update({"saldo": saldo_atual - valor_atual})
-
-            doc_ref.update({
-                "ativo": False,
-                "fim": datetime.now(timezone.utc)
-            })
-
-            id_time_vendedor = leilao.get("id_time_vendedor")
-            if id_time_vendedor:
-                registrar_movimentacao(db, id_time_vendedor, "leilao_venda", nome, valor_atual)
-            registrar_movimentacao(db, id_time_vencedor, "leilao_compra", nome, valor_atual)
-
-            st.success(f"✅ Leilão de {nome} finalizado!")
-            st.rerun()
-
-        # Finalizar leilão sem vencedor
-        if tempo_restante <= 0 and not id_time_vencedor:
-            doc_ref = db.collection("leiloes_livres").document(leilao["id"])
-            id_time_vendedor = leilao.get("id_time_vendedor")
-            jogador["valor"] = valor_atual
-
-            if id_time_vendedor:
-                db.collection("times").document(id_time_vendedor).collection("elenco").add(jogador)
-
-            doc_ref.update({
-                "ativo": False,
-                "fim": datetime.now(timezone.utc)
-            })
-
-            st.warning(f"⛔ Ninguém deu lance em {nome}. Ele voltou ao elenco do time vendedor.")
-            st.rerun()
+    st.info("⏱️ O tempo do leilão acabou.")
+    st.stop()
