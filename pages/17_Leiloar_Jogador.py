@@ -1,16 +1,16 @@
 import streamlit as st
 from google.oauth2 import service_account
-from google.cloud import firestore
+import google.cloud.firestore as gc_firestore
 from datetime import datetime, timedelta
 from utils import verificar_login
 
 st.set_page_config(page_title="Leiloar Jogador", layout="wide")
 
-# 🔐 Inicializa Firebase com st.secrets
+# 🔐 Inicializa Firebase
 if "firebase" not in st.session_state:
     try:
         cred = service_account.Credentials.from_service_account_info(st.secrets["firebase"])
-        db = firestore.Client(credentials=cred, project=st.secrets["firebase"]["project_id"])
+        db = gc_firestore.Client(credentials=cred, project=st.secrets["firebase"]["project_id"])
         st.session_state["firebase"] = db
     except Exception as e:
         st.error(f"Erro ao conectar ao Firebase: {e}")
@@ -18,15 +18,14 @@ if "firebase" not in st.session_state:
 else:
     db = st.session_state["firebase"]
 
-# ✅ Verifica login
 verificar_login()
 
-id_time = st.session_state["id_time"]
-nome_time = st.session_state["nome_time"]
+id_time = st.session_state.get("id_time")
+nome_time = st.session_state.get("nome_time")
 
-st.title("🔨 Leiloar Jogador do Elenco")
+st.markdown(f"<h2 style='text-align:center;'>🎦 Leiloar Jogador - {nome_time}</h2><hr>", unsafe_allow_html=True)
 
-# Carregar elenco do time logado
+# 🔍 Busca elenco
 elenco_ref = db.collection("times").document(id_time).collection("elenco").stream()
 elenco = [doc.to_dict() | {"id": doc.id} for doc in elenco_ref]
 
@@ -34,36 +33,41 @@ if not elenco:
     st.info("Seu elenco está vazio.")
     st.stop()
 
-jogadores_nomes = [j["nome"] for j in elenco]
-jogador_selecionado = st.selectbox("Selecione o jogador para leilão:", jogadores_nomes)
+# 🔍 Verifica se já existe leilão ativo
+leilao_doc = db.collection("configuracoes").document("leilao_sistema").get()
+if leilao_doc.exists and leilao_doc.to_dict().get("ativo", False):
+    st.warning("Já existe um leilão ativo no sistema. Aguarde ele terminar para iniciar um novo.")
+    st.stop()
 
-jogador_dados = next((j for j in elenco if j["nome"] == jogador_selecionado), None)
+jogador_escolhido = st.selectbox("Escolha o jogador para leiloar:", options=elenco, format_func=lambda x: f"{x['nome']} ({x['posição']})")
+valor_inicial = st.number_input("Valor inicial do leilão (R$):", min_value=100000, step=50000, value=jogador_escolhido["valor"])
+duracao = st.slider("Duração do Leilão (minutos):", min_value=1, max_value=10, value=2)
 
-if jogador_dados:
-    st.markdown(f"**Posição:** {jogador_dados.get('posição', '-')}")
-    st.markdown(f"**Overall:** {jogador_dados.get('overall', '-')}")
-    st.markdown(f"**Valor de mercado:** R$ {jogador_dados.get('valor', 0):,.0f}".replace(",", "."))
+if st.button("🚀 Iniciar Leilão"):
+    try:
+        fim = datetime.utcnow() + timedelta(minutes=duracao)
 
-    duracao = st.slider("⏱️ Duração do Leilão (minutos)", 1, 10, 2)
-
-    if st.button("🚀 Iniciar Leilão"):
-        agora = datetime.now()
-        fim = agora + timedelta(minutes=duracao)
-
-        leilao_data = {
-            "inicio": agora,
+        dados_leilao = {
+            "jogador": {
+                "nome": jogador_escolhido["nome"],
+                "posicao": jogador_escolhido["posição"],
+                "overall": jogador_escolhido["overall"],
+                "valor": valor_inicial
+            },
+            "valor_atual": valor_inicial,
+            "valor_inicial": valor_inicial,
+            "id_time_original": id_time,
+            "ativo": True,
             "fim": fim,
-            "jogador": jogador_dados,
-            "valor_atual": jogador_dados["valor"],
-            "time_vencedor": "",
-            "id_time_vencedor": "",
-            "ativo": True
+            "time_vencedor": ""
         }
 
-        db.collection("configuracoes").document("leilao_sistema").set(leilao_data)
+        db.collection("configuracoes").document("leilao_sistema").set(dados_leilao)
 
-        # Remove jogador do elenco
-        db.collection("times").document(id_time).collection("elenco").document(jogador_dados["id"]).delete()
+        db.collection("times").document(id_time).collection("elenco").document(jogador_escolhido["id"]).delete()
 
-        st.success(f"Leilão iniciado para {jogador_dados['nome']}!")
+        st.success("Leilão iniciado com sucesso!")
         st.rerun()
+
+    except Exception as e:
+        st.error(f"Erro ao iniciar leilão: {e}")
