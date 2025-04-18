@@ -6,7 +6,7 @@ from utils import registrar_movimentacao
 
 st.set_page_config(page_title="Mercado de Transferências - LigaFut", layout="wide")
 
-# 🔐 Firebase
+# 🔐 Firebase 
 if "firebase" not in st.session_state:
     try:
         cred = service_account.Credentials.from_service_account_info(st.secrets["firebase"])
