@@ -7,7 +7,7 @@ import random
 
 st.set_page_config(page_title="Evento de Multa - LigaFut", layout="wide")
 
-# 🔐 Firebase
+# Firebase
 if "firebase" not in st.session_state:
     try:
         cred = service_account.Credentials.from_service_account_info(st.secrets["firebase"])
@@ -27,11 +27,11 @@ nome_time = st.session_state["nome_time"]
 
 st.title("🚨 Evento de Multa - LigaFut")
 
-# 👑 Verifica se é admin
+# Verifica se é admin
 admin_ref = db.collection("admins").document(id_usuario).get()
 eh_admin = admin_ref.exists
 
-# 📄 Busca configuração do evento
+# Busca configuração do evento
 evento_ref = db.collection("configuracoes").document("evento_multa")
 evento_doc = evento_ref.get()
 evento = evento_doc.to_dict() if evento_doc.exists else {}
@@ -39,7 +39,7 @@ evento = evento_doc.to_dict() if evento_doc.exists else {}
 ativo = evento.get("ativo", False)
 inicio_ts = evento.get("inicio")
 
-# ✅ Conversão segura do timestamp Firestore
+# Conversão segura do timestamp
 if isinstance(inicio_ts, datetime):
     inicio = inicio_ts.replace(tzinfo=None)
 elif hasattr(inicio_ts, "to_datetime"):
@@ -102,11 +102,11 @@ if ativo:
 
         bloqueados = bloqueios.get(id_time, [])
         nomes_bloqueados = [j.get("nome") for j in bloqueados]
-        opcoes = [f"{j['nome']} - {j['posicao']}" for j in elenco if j['nome'] not in nomes_bloqueados]
+        opcoes = [f"{j['nome']} - {j.get('posicao', 'Sem posição')}" for j in elenco if j['nome'] not in nomes_bloqueados]
 
         escolhidos = st.multiselect("Jogadores para bloquear:", opcoes, default=nomes_bloqueados, max_selections=4)
         if st.button("🔒 Salvar bloqueios"):
-            novos = [j for j in elenco if f"{j['nome']} - {j['posicao']}" in escolhidos]
+            novos = [j for j in elenco if f"{j['nome']} - {j.get('posicao', 'Sem posição')}" in escolhidos]
             bloqueios[id_time] = novos
             evento_ref.update({"bloqueios": bloqueios})
             st.success("Bloqueios salvos.")
@@ -148,11 +148,11 @@ if ativo:
                             j = jogador.to_dict()
                             bloqueado = any(j['nome'] == b['nome'] for b in bloqueios.get(tid, []))
                             if bloqueado:
-                                st.markdown(f"🔒 {j['nome']} - {j['posicao']} (R$ {j['valor']:,.0f})")
+                                st.markdown(f"🔒 {j['nome']} - {j.get('posicao', 'Sem posição')} (R$ {j.get('valor', 0):,.0f})")
                             else:
-                                if st.button(f"Pagar multa por {j['nome']} (R$ {j['valor']:,.0f})", key=f"{tid}_{j['nome']}"):
+                                if st.button(f"Pagar multa por {j['nome']} (R$ {j.get('valor', 0):,.0f})", key=f"{tid}_{j['nome']}"):
                                     novo = roubos.get(id_time, [])
-                                    novo.append({"nome": j['nome'], "posicao": j['posicao'], "valor": j['valor'], "de": tid})
+                                    novo.append({"nome": j['nome'], "posicao": j.get('posicao', '-'), "valor": j.get('valor', 0), "de": tid})
                                     roubos[id_time] = novo
                                     ja_perderam[tid] = ja_perderam.get(tid, 0) + 1
                                     evento_ref.update({"roubos": roubos, "ja_perderam": ja_perderam})
@@ -175,7 +175,7 @@ if ativo:
         st.success("✅ Evento finalizado. Veja o resumo:")
         for tid, acoes in roubos.items():
             nome_t = db.collection("times").document(tid).get().to_dict().get("nome", "Desconhecido")
-            st.markdown(f"### 🟦 {nome_t} comprou por multa:")
+            st.markdown(f"### 🔾 {nome_t} comprou por multa:")
             for j in acoes:
                 nome_vendido = db.collection("times").document(j['de']).get().to_dict().get("nome", "")
                 st.markdown(f"- {j['nome']} ({j['posicao']}) do time {nome_vendido}")
