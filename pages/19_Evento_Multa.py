@@ -1,4 +1,3 @@
-
 import streamlit as st
 from google.oauth2 import service_account
 from google.cloud import firestore
@@ -28,9 +27,11 @@ nome_time = st.session_state["nome_time"]
 
 st.title("🚨 Evento de Multa - LigaFut")
 
+# Verifica se é admin
 admin_ref = db.collection("admins").document(id_usuario).get()
 eh_admin = admin_ref.exists
 
+# Busca configuração do evento
 evento_ref = db.collection("configuracoes").document("evento_multa")
 evento_doc = evento_ref.get()
 evento = evento_doc.to_dict() if evento_doc.exists else {}
@@ -38,6 +39,7 @@ evento = evento_doc.to_dict() if evento_doc.exists else {}
 ativo = evento.get("ativo", False)
 inicio_ts = evento.get("inicio")
 
+# Conversão segura do timestamp
 if isinstance(inicio_ts, datetime):
     inicio = inicio_ts.replace(tzinfo=None)
 elif hasattr(inicio_ts, "to_datetime"):
@@ -45,6 +47,7 @@ elif hasattr(inicio_ts, "to_datetime"):
 else:
     inicio = None
 
+# ADMIN
 if eh_admin:
     st.markdown("### 👑 Painel do Administrador")
     if not ativo:
@@ -78,6 +81,7 @@ if eh_admin:
             except Exception as e:
                 st.error(f"Erro ao encerrar: {e}")
 
+# STATUS
 st.markdown("---")
 if ativo:
     fase = evento.get("fase", "bloqueio")
@@ -90,6 +94,7 @@ if ativo:
 
     st.success(f"Evento ativo - Fase: {fase.upper()}")
 
+    # FASE 1 - BLOQUEIO
     if fase == "bloqueio":
         st.subheader("⛔ Bloqueie até 4 jogadores do seu elenco")
         elenco_ref = db.collection("times").document(id_time).collection("elenco").stream()
@@ -114,7 +119,7 @@ if ativo:
 
         escolhidos = st.multiselect(
             "Jogadores para bloquear:",
-            options=opcoes,
+            options=opcoes + default_validos,
             default=default_validos,
             max_selections=4
         )
@@ -133,6 +138,7 @@ if ativo:
                 st.success("Avançou para fase de ação.")
                 st.rerun()
 
+    # FASE 2 - AÇÃO
     elif fase == "acao":
         st.subheader("🎯 Ordem e Vez Atual")
         for i, tid in enumerate(ordem):
@@ -144,16 +150,16 @@ if ativo:
             else:
                 st.markdown(f"⚪ {nome}")
 
+        # Lista de jogadores já comprados por qualquer time
+        jogadores_ja_comprados = []
+        for lances in roubos.values():
+            jogadores_ja_comprados.extend([j["nome"] for j in lances if "nome" in j])
+
         if vez < len(ordem):
             id_vez = ordem[vez]
             if id_time == id_vez:
                 st.success("É sua vez! Escolha jogadores para pagar a multa.")
                 st.markdown("Escolha um time adversário:")
-
-                jogadores_ja_selecionados = set()
-                for l in roubos.values():
-                    for j in l:
-                        jogadores_ja_selecionados.add((j["nome"], j["de"]))
 
                 times_ref = db.collection("times").stream()
                 for tdoc in times_ref:
@@ -163,13 +169,15 @@ if ativo:
 
                     nome_t = tdoc.to_dict().get("nome", "Desconhecido")
                     with st.expander(f"📂 {nome_t}"):
-                        elenco_docs = db.collection("times").document(tid).collection("elenco").stream()
-                        for jogador in elenco_docs:
+                        elenco = db.collection("times").document(tid).collection("elenco").stream()
+                        for jogador in elenco:
                             j = jogador.to_dict()
-                            if "nome" not in j or "posicao" not in j:
+                            if 'nome' not in j or 'posicao' not in j:
                                 continue
-                            if (j["nome"], tid) in jogadores_ja_selecionados:
+
+                            if j['nome'] in jogadores_ja_comprados:
                                 continue
+
                             bloqueado = any(j['nome'] == b.get('nome') for b in bloqueios.get(tid, []))
                             if bloqueado:
                                 st.markdown(f"🔒 {j['nome']} - {j['posicao']} (R$ {j.get('valor', 0):,.0f})")
@@ -199,6 +207,7 @@ if ativo:
                     evento_ref.update({"vez": vez + 1})
                     st.rerun()
 
+    # FASE 3 - FINALIZADO
     if evento.get("finalizado"):
         st.success("✅ Evento finalizado. Veja o resumo:")
         for tid, acoes in roubos.items():
