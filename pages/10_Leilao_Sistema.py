@@ -1,6 +1,7 @@
-import streamlit as st
+importimport streamlit as st
 from google.oauth2 import service_account
 from google.cloud import firestore
+from utils import verificar_login
 import datetime
 
 # Configuração da página
@@ -19,31 +20,28 @@ else:
     db = st.session_state["firebase"]
 
 # Verifica login
-if "id_time" not in st.session_state or not st.session_state["id_time"]:
-    st.warning("Você precisa estar logado para visualizar o leilão.")
+verificar_login()
+
+# Busca leilão ativo
+doc_ref = db.collection("configuracoes").document("leilao_sistema")
+doc = doc_ref.get()
+
+if not doc.exists or not doc.to_dict().get("ativo", False):
+    st.warning("Nenhum leilão ativo no momento.")
     st.stop()
 
-# Referência ao documento de leilão
-leilao_ref = db.collection("configuracoes").document("leilao_sistema")
-leilao_doc = leilao_ref.get()
-
-if not leilao_doc.exists or not leilao_doc.to_dict().get("ativo", False):
-    st.info("⚠️ Nenhum leilão ativo no momento.")
-    st.stop()
-
-dados = leilao_doc.to_dict()
-fim = dados.get("fim")
-jogador = dados.get("jogador", {})
-valor_atual = dados.get("valor_atual", 0)
-time_vencedor = dados.get("time_vencedor", "")
-id_time_usuario = st.session_state["id_time"]
-nome_time_usuario = st.session_state["nome_time"]
+leilao = doc.to_dict()
+jogador = leilao.get("jogador", {})
+valor_atual = leilao.get("valor_atual", 0)
+time_vencedor = leilao.get("time_vencedor", "")
+fim = leilao.get("fim")
+id_time_usuario = st.session_state.get("id_time", "")
 
 # Converte fim para datetime
-if hasattr(fim, "to_datetime"):
+if hasattr(fim, 'to_datetime'):
     fim = fim.to_datetime()
 
-# Cronômetro
+# Cronômetro regressivo
 tempo_restante = (fim - datetime.datetime.now()).total_seconds()
 tempo_restante = max(0, int(tempo_restante))
 minutos, segundos = divmod(tempo_restante, 60)
@@ -51,10 +49,10 @@ minutos, segundos = divmod(tempo_restante, 60)
 st.markdown(f"<h2 style='text-align:center'>⏳ Tempo restante: {minutos:02d}:{segundos:02d}</h2>", unsafe_allow_html=True)
 st.markdown("---")
 
-# Exibe o jogador
+# Exibição do jogador
 col1, col2, col3, col4 = st.columns([2, 4, 2, 2])
 with col1:
-    st.subheader(jogador.get("posição", ""))
+    st.subheader(jogador.get("posicao", ""))
 with col2:
     st.subheader(jogador.get("nome", ""))
 with col3:
@@ -64,7 +62,7 @@ with col4:
 
 st.markdown("---")
 
-# Novo lance
+# Lances
 if tempo_restante > 0:
     novo_lance = st.number_input("💸 Seu lance (mínimo: R$100.000 acima)", min_value=valor_atual + 100_000, step=100_000)
     if st.button("💥 Fazer Lance"):
@@ -80,10 +78,9 @@ if tempo_restante > 0:
                 if (fim - agora).total_seconds() <= 15:
                     novo_fim = agora + datetime.timedelta(seconds=15)
 
-                leilao_ref.update({
+                doc_ref.update({
                     "valor_atual": novo_lance,
-                    "time_vencedor": nome_time_usuario,
-                    "id_time_vencedor": id_time_usuario,
+                    "time_vencedor": id_time_usuario,
                     "fim": novo_fim
                 })
 
@@ -93,3 +90,4 @@ if tempo_restante > 0:
             st.error(f"Erro ao registrar lance: {e}")
 else:
     st.info("⏱️ O tempo do leilão acabou.")
+
