@@ -53,11 +53,11 @@ except Exception as e:
 
 st.markdown("---")
 
-# Busca nome do time vencedor
+# Nome do time que está vencendo
 nome_time_vencedor = ""
 if id_time_vencedor:
-    time_vencedor_ref = db.collection("times").document(id_time_vencedor).get()
-    nome_time_vencedor = time_vencedor_ref.to_dict().get("nome", "Desconhecido")
+    time_doc = db.collection("times").document(id_time_vencedor).get()
+    nome_time_vencedor = time_doc.to_dict().get("nome", "Desconhecido")
 
 # Exibição do jogador
 col1, col2, col3, col4 = st.columns([2, 4, 2, 2])
@@ -75,26 +75,26 @@ if nome_time_vencedor:
 
 st.markdown("---")
 
-# Finaliza leilão e move jogador para elenco
+# Finaliza leilão e adiciona jogador ao elenco
 if tempo_restante == 0 and id_time_vencedor and jogador:
     try:
-        # Adiciona jogador ao elenco com posição e valor do lance
-        jogador_atualizado = {
-            "nome": jogador.get("nome", ""),
-            "posicao": jogador.get("posicao", ""),
-            "overall": jogador.get("overall", 0),
+        jogador_final = {
+            "nome": jogador.get("nome"),
+            "posicao": jogador.get("posicao"),
+            "overall": jogador.get("overall"),
             "valor": valor_atual
         }
-        elenco_ref = db.collection("times").document(id_time_vencedor).collection("elenco")
-        elenco_ref.add(jogador_atualizado)
 
-        # Debita valor
+        elenco_ref = db.collection("times").document(id_time_vencedor).collection("elenco")
+        elenco_ref.add(jogador_final)
+
+        # Atualiza saldo
         time_doc = db.collection("times").document(id_time_vencedor)
         saldo_atual = time_doc.get().to_dict().get("saldo", 0)
         novo_saldo = saldo_atual - valor_atual
         time_doc.update({"saldo": novo_saldo})
 
-        # Registra movimentação
+        # Movimentação financeira
         registrar_movimentacao(id_time_vencedor, jogador.get("nome", ""), "Leilão", "Compra", valor_atual)
 
         # Finaliza leilão
