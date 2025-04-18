@@ -2,9 +2,9 @@ import streamlit as st
 from google.oauth2 import service_account
 from google.cloud import firestore
 from utils import verificar_login
-import datetime
+from datetime import datetime
 
-st.set_page_config(page_title="🕵️ Evento de Roubo", layout="wide")
+st.set_page_config(page_title="🚨 Evento Roubo - LigaFut", layout="wide")
 
 # 🔐 Inicializa Firebase com st.secrets
 if "firebase" not in st.session_state:
@@ -18,75 +18,85 @@ if "firebase" not in st.session_state:
 else:
     db = st.session_state["firebase"]
 
-# ✅ Verifica se o usuário está logado
+# ✅ Verifica login
 verificar_login()
 
 id_time = st.session_state["id_time"]
 nome_time = st.session_state["nome_time"]
 
-st.markdown(f"## 🕵️ Evento de Roubo - {nome_time}")
+st.title("🚨 Evento de Roubo de Jogador")
 
-# Buscar todos os times disponíveis (exceto o seu)
+# Listar todos os times (exceto o logado)
+st.subheader("Escolha o time alvo para roubo:")
 times = db.collection("times").stream()
-opcoes_times = {doc.id: doc.to_dict().get("nome", "Sem Nome") for doc in times if doc.id != id_time}
+times_dict = {doc.id: doc.to_dict().get("nome", "Sem nome") for doc in times if doc.id != id_time}
 
-time_alvo_id = st.selectbox("Selecione um time para roubar jogador:", options=list(opcoes_times.keys()), format_func=lambda x: opcoes_times[x])
-
-# Listar jogadores disponíveis do time alvo
-elenco_ref = db.collection("times").document(time_alvo_id).collection("elenco").stream()
-jogadores_alvo = [doc.to_dict() | {"id_doc": doc.id} for doc in elenco_ref]
-
-# Buscar jogadores protegidos no time alvo
-protecao_ref = db.collection("eventos_multa").document("protecoes").collection(time_alvo_id).stream()
-protegidos = [doc.id for doc in protecao_ref]
-
-# Filtrar apenas jogadores não protegidos
-jogadores_disponiveis = [j for j in jogadores_alvo if j["nome"] not in protegidos]
-
-if not jogadores_disponiveis:
-    st.warning("❌ Nenhum jogador disponível para roubo neste time (todos estão protegidos).")
+if not times_dict:
+    st.info("Nenhum time disponível para roubo.")
     st.stop()
 
-# Interface para selecionar jogador
-jogador_nome = st.selectbox("Escolha o jogador para roubar:", options=[j["nome"] for j in jogadores_disponiveis])
-jogador_escolhido = next(j for j in jogadores_disponiveis if j["nome"] == jogador_nome)
+time_alvo_id = st.selectbox("Times disponíveis:", list(times_dict.keys()), format_func=lambda x: times_dict[x])
 
-# Mostrar detalhes
+# Exibir elenco do time alvo
+st.subheader(f"🎯 Jogadores do {times_dict[time_alvo_id]} disponíveis para roubo")
+elenco_ref = db.collection("times").document(time_alvo_id).collection("elenco").stream()
+elenco = [doc.to_dict() | {"id": doc.id} for doc in elenco_ref]
+
+if not elenco:
+    st.info("Este time não possui jogadores.")
+    st.stop()
+
+jogador_escolhido = st.selectbox("Escolha o jogador a ser roubado:", elenco, format_func=lambda x: x.get("nome", "Sem nome"))
+
+# Mostrar detalhes do jogador com segurança
 st.markdown("---")
-st.markdown(f"**🧍 Jogador:** {jogador_escolhido['nome']}")
-st.markdown(f"**📍 Posição:** {jogador_escolhido['posicao']}")
-st.markdown(f"**⭐ Overall:** {jogador_escolhido['overall']}")
-st.markdown(f"**💰 Valor:** R$ {jogador_escolhido['valor']:,.0f}".replace(",", "."))
+st.markdown(f"**🧍 Jogador:** {jogador_escolhido.get('nome', 'Sem nome')}")
+st.markdown(f"**📍 Posição:** {jogador_escolhido.get('posicao', 'Não informada')}")
+st.markdown(f"**⭐ Overall:** {jogador_escolhido.get('overall', 'N/A')}")
+valor_jogador = jogador_escolhido.get("valor", 0)
+st.markdown(f"**💰 Valor do Jogador:** R$ {valor_jogador:,.0f}".replace(",", "."))
 
-# Confirmar roubo
-if st.button("🚨 Roubar Jogador"):
-    valor_roubo = jogador_escolhido['valor'] * 0.5
+# Calcular valor de roubo (50% do valor original)
+valor_roubo = int(valor_jogador * 0.5)
+st.markdown(f"**💸 Valor do Roubo (50%): R$ {valor_roubo:,.0f}**".replace(",", "."))
 
-    # Verifica saldo
-    time_ref = db.collection("times").document(id_time)
-    saldo = time_ref.get().to_dict().get("saldo", 0)
-
-    if saldo < valor_roubo:
-        st.error("❌ Saldo insuficiente para realizar o roubo.")
-        st.stop()
-
+# Botão para confirmar roubo
+if st.button("🔥 Realizar Roubo"):
     try:
-        # Remove jogador do elenco do time alvo
-        db.collection("times").document(time_alvo_id).collection("elenco").document(jogador_escolhido["id_doc"]).delete()
+        # Verificar saldo do time logado
+        time_ref = db.collection("times").document(id_time)
+        time_data = time_ref.get().to_dict()
+        saldo = time_data.get("saldo", 0)
 
-        # Adiciona jogador ao seu elenco
-        db.collection("times").document(id_time).collection("elenco").add({
-            "nome": jogador_escolhido["nome"],
-            "posicao": jogador_escolhido["posicao"],
-            "overall": jogador_escolhido["overall"],
-            "valor": jogador_escolhido["valor"]
+        if saldo < valor_roubo:
+            st.error("❌ Saldo insuficiente para realizar o roubo.")
+            st.stop()
+
+        # Atualiza saldo dos dois times
+        db.collection("times").document(id_time).update({
+            "saldo": saldo - valor_roubo
         })
 
-        # Atualiza saldos
-        db.collection("times").document(id_time).update({"saldo": firestore.Increment(-valor_roubo)})
-        db.collection("times").document(time_alvo_id).update({"saldo": firestore.Increment(valor_roubo)})
+        saldo_destino = db.collection("times").document(time_alvo_id).get().to_dict().get("saldo", 0)
+        db.collection("times").document(time_alvo_id).update({
+            "saldo": saldo_destino + valor_roubo
+        })
 
-        st.success(f"✅ Jogador {jogador_escolhido['nome']} roubado com sucesso por R$ {valor_roubo:,.0f}".replace(",", "."))
+        # Remove jogador do time alvo e adiciona ao time comprador
+        db.collection("times").document(time_alvo_id).collection("elenco").document(jogador_escolhido["id"]).delete()
+        db.collection("times").document(id_time).collection("elenco").add({
+            "nome": jogador_escolhido.get("nome", ""),
+            "posicao": jogador_escolhido.get("posicao", ""),
+            "overall": jogador_escolhido.get("overall", 0),
+            "valor": valor_jogador
+        })
+
+        # Registrar movimentações
+        from utils import registrar_movimentacao
+        registrar_movimentacao(id_time, jogador_escolhido.get("nome", ""), "roubo", "entrada", -valor_roubo)
+        registrar_movimentacao(time_alvo_id, jogador_escolhido.get("nome", ""), "roubo", "saida", valor_roubo)
+
+        st.success("✅ Jogador roubado com sucesso!")
         st.rerun()
     except Exception as e:
-        st.error(f"Erro ao processar roubo: {e}")
+        st.error(f"Erro ao realizar roubo: {e}")
