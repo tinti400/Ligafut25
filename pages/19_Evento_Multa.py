@@ -3,6 +3,7 @@ from google.oauth2 import service_account
 from google.cloud import firestore
 from datetime import datetime, timedelta
 from utils import verificar_login, registrar_movimentacao
+import random
 
 st.set_page_config(page_title="Evento de Multa - LigaFut", layout="wide")
 
@@ -13,177 +14,180 @@ if "firebase" not in st.session_state:
         db = firestore.Client(credentials=cred, project=st.secrets["firebase"]["project_id"])
         st.session_state["firebase"] = db
     except Exception as e:
-        st.error(f"Erro ao conectar ao Firebase: {e}")
+        st.error(f"Erro ao conectar com o Firebase: {e}")
         st.stop()
 else:
     db = st.session_state["firebase"]
 
-# Login
 verificar_login()
-usuario = st.session_state.get("usuario_logado")
-id_time_usuario = st.session_state.get("id_time")
-nome_time_usuario = st.session_state.get("nome_time")
 
-# Admin?
-admin_ref = db.collection("admins").document(usuario).get()
+id_usuario = st.session_state["usuario_id"]
+id_time = st.session_state["id_time"]
+nome_time = st.session_state["nome_time"]
+
+st.title("🚨 Evento de Multa - LigaFut")
+
+# Verifica se é admin
+admin_ref = db.collection("admins").document(id_usuario).get()
 eh_admin = admin_ref.exists
 
-# Configuração do evento
+# Busca configuração do evento
 evento_ref = db.collection("configuracoes").document("evento_multa")
 evento_doc = evento_ref.get()
 evento = evento_doc.to_dict() if evento_doc.exists else {}
 
 ativo = evento.get("ativo", False)
-inicio = evento.get("inicio")
-bloqueios = evento.get("bloqueios", {})
-ordem = evento.get("ordem", [])
-vez = evento.get("vez", 0)
-concluidos = evento.get("concluidos", {})
+inicio_ts = evento.get("inicio")
 
-# Início
-st.title("🚨 Evento de Multa - LigaFut")
+if inicio_ts and hasattr(inicio_ts, "to_datetime"):
+    inicio = inicio_ts.to_datetime().replace(tzinfo=None)
+else:
+    inicio = None
 
-# Admin painel
+# ---------------------- ADMIN ----------------------
 if eh_admin:
     st.markdown("### 👑 Painel do Administrador")
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        if st.button("🚀 Iniciar Evento"):
-            times = [doc.id for doc in db.collection("times").stream()]
-            import random
-            random.shuffle(times)
-            evento_ref.set({
-                "ativo": True,
-                "inicio": datetime.now(),
-                "bloqueios": {},
-                "ordem": times,
-                "vez": 0,
-                "concluidos": {},
-                "transferencias": []
-            })
-            st.success("Evento iniciado com sucesso!")
-            st.rerun()
-    with col2:
-        if ativo and st.button("⏭️ Pular vez atual"):
-            evento_ref.update({"vez": vez + 1})
-            st.warning("Vez atual pulada!")
-            st.rerun()
-    with col3:
-        if ativo and st.button("🛑 Encerrar Evento"):
-            evento_ref.update({"ativo": False})
-            st.success("Evento encerrado!")
-            st.rerun()
-
-# Classificação da ordem
-st.markdown("---")
-st.subheader("📋 Ordem de Participação")
-for i, tid in enumerate(ordem):
-    cor = "white"
-    if concluidos.get(tid, False):
-        cor = "#d4edda"
-    elif i == vez:
-        cor = "#fff3cd"
-    nome = db.collection("times").document(tid).get().to_dict().get("nome", "Desconhecido")
-    st.markdown(f"<div style='background-color:{cor};padding:6px;border-radius:5px'>{i+1}. {nome}</div>", unsafe_allow_html=True)
-
-# Bloqueio
-if ativo and inicio and datetime.now() <= inicio + timedelta(minutes=2):
-    st.warning("⏳ Tempo para bloqueio de até 4 jogadores do seu elenco!")
-    elenco_ref = db.collection("times").document(id_time_usuario).collection("elenco").stream()
-    elenco = [doc.to_dict() | {"id": doc.id} for doc in elenco_ref]
-    bloqueados = bloqueios.get(id_time_usuario, [])
-    nomes = [j["nome"] for j in elenco]
-    selecionados = st.multiselect("🔒 Escolha até 4 jogadores para bloquear:", nomes, default=bloqueados)
-    if st.button("✅ Salvar bloqueios"):
-        evento_ref.update({f"bloqueios.{id_time_usuario}": selecionados[:4]})
-        st.success("Bloqueios salvos!")
-        st.rerun()
-
-# Execução da vez
-elif ativo and vez < len(ordem) and ordem[vez] == id_time_usuario:
-    st.success("🟡 É a sua vez! Você pode realizar até 5 ações de multa!")
-
-    # Selecionar time alvo
-    times_ref = db.collection("times").stream()
-    times_dict = {doc.id: doc.to_dict().get("nome", "Sem Nome") for doc in times_ref}
-
-    col_time = st.selectbox("🎯 Escolha o time alvo:", [tid for tid in times_dict if tid != id_time_usuario])
-
-    # Elenco alvo
-    elenco_ref = db.collection("times").document(col_time).collection("elenco").stream()
-    bloqueados = bloqueios.get(col_time, [])
-
-    # Verifica se já perdeu 4 jogadores
-    ja_perdeu = sum(1 for t in evento.get("transferencias", []) if t["perdedor"] == col_time)
-    if ja_perdeu >= 4:
-        st.warning("❌ Este time já perdeu 4 jogadores e não pode mais ser atacado.")
+    if not ativo:
+        if st.button("🚀 Iniciar Evento de Multa"):
+            try:
+                times_ref = db.collection("times").stream()
+                ordem = [doc.id for doc in times_ref]
+                random.shuffle(ordem)
+                evento_ref.set({
+                    "ativo": True,
+                    "inicio": datetime.utcnow(),
+                    "fase": "bloqueio",
+                    "ordem": ordem,
+                    "bloqueios": {},
+                    "roubos": {},
+                    "vez": 0,
+                    "concluidos": [],
+                    "ja_perderam": {},
+                    "finalizado": False
+                })
+                st.success("Evento iniciado com sucesso!")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Erro ao iniciar evento: {e}")
     else:
-        st.markdown("---")
-        st.markdown("### 👥 Jogadores disponíveis:")
-        for doc in elenco_ref:
-            jogador = doc.to_dict()
-            nome = jogador.get("nome")
-            if nome in bloqueados:
-                continue
-            posicao = jogador.get("posição")
-            overall = jogador.get("overall")
-            valor = jogador.get("valor")
-            with st.container():
-                col1, col2, col3, col4 = st.columns([3, 2, 2, 2])
-                col1.markdown(f"**{nome}**")
-                col2.markdown(f"{posicao}")
-                col3.markdown(f"⭐ {overall}")
-                col4.markdown(f"💰 R$ {valor:,.0f}".replace(",", "."))
+        if st.button("🛑 Encerrar Evento"):
+            try:
+                evento_ref.update({"ativo": False, "finalizado": True})
+                st.success("Evento encerrado.")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Erro ao encerrar: {e}")
 
-                if st.button(f"💥 Multar {nome}", key=f"multa_{doc.id}"):
-                    try:
-                        # Saldo
-                        comprador_ref = db.collection("times").document(id_time_usuario)
-                        vendedor_ref = db.collection("times").document(col_time)
-                        saldo_comprador = comprador_ref.get().to_dict().get("saldo", 0)
-                        if saldo_comprador < valor:
-                            st.error("Saldo insuficiente!")
-                            st.stop()
+# ---------------------- STATUS ----------------------
+st.markdown("---")
+if ativo:
+    fase = evento.get("fase")
+    ordem = evento.get("ordem", [])
+    vez = evento.get("vez", 0)
+    concluidos = evento.get("concluidos", [])
+    bloqueios = evento.get("bloqueios", {})
+    ja_perderam = evento.get("ja_perderam", {})
+    roubos = evento.get("roubos", {})
 
-                        comprador_ref.update({"saldo": saldo_comprador - valor})
-                        saldo_vendedor = vendedor_ref.get().to_dict().get("saldo", 0)
-                        vendedor_ref.update({"saldo": saldo_vendedor + valor})
+    st.success(f"Evento ativo - Fase: {fase.upper()}")
 
-                        # Transferência
-                        db.collection("times").document(id_time_usuario).collection("elenco").add(jogador)
-                        db.collection("times").document(col_time).collection("elenco").document(doc.id).delete()
+    # FASE 1 - BLOQUEIO
+    if fase == "bloqueio":
+        st.subheader("⛔ Bloqueie até 4 jogadores do seu elenco")
+        elenco_ref = db.collection("times").document(id_time).collection("elenco").stream()
+        elenco = [doc.to_dict() | {"id": doc.id} for doc in elenco_ref]
 
-                        registrar_movimentacao(id_time_usuario, nome, "Multa", "Compra", valor)
-                        registrar_movimentacao(col_time, nome, "Multa", "Venda", valor)
+        bloqueados = bloqueios.get(id_time, [])
+        nomes_bloqueados = [j.get("nome") for j in bloqueados]
+        opcoes = [f"{j['nome']} - {j['posicao']}" for j in elenco if j['nome'] not in nomes_bloqueados]
 
-                        # Atualiza lista
-                        transferencias = evento.get("transferencias", [])
-                        transferencias.append({
-                            "comprador": id_time_usuario,
-                            "perdedor": col_time,
-                            "jogador": nome
-                        })
-                        evento_ref.update({"transferencias": transferencias})
+        escolhidos = st.multiselect("Jogadores para bloquear:", opcoes, default=nomes_bloqueados, max_selections=4)
+        if st.button("🔒 Salvar bloqueios"):
+            novos = [j for j in elenco if f"{j['nome']} - {j['posicao']}" in escolhidos]
+            bloqueios[id_time] = novos
+            evento_ref.update({"bloqueios": bloqueios})
+            st.success("Bloqueios salvos.")
+            st.rerun()
 
-                        # Marca se completou
-                        concluidos[id_time_usuario] = concluidos.get(id_time_usuario, 0) + 1
-                        if concluidos[id_time_usuario] >= 5:
-                            evento_ref.update({f"concluidos.{id_time_usuario}": 5, "vez": vez + 1})
-                        else:
-                            evento_ref.update({f"concluidos.{id_time_usuario}": concluidos[id_time_usuario]})
+        if eh_admin and st.button("➡️ Avançar para Ação"):
+            evento_ref.update({"fase": "acao"})
+            st.success("Avançou para fase de ação.")
+            st.rerun()
 
-                        st.success(f"✅ Jogador {nome} adquirido via multa!")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Erro: {e}")
+    # FASE 2 - AÇÃO
+    elif fase == "acao":
+        st.subheader("🎯 Ordem e Vez Atual")
+        for i, tid in enumerate(ordem):
+            nome = db.collection("times").document(tid).get().to_dict().get("nome")
+            if tid in concluidos:
+                st.markdown(f"🟢 {nome}")
+            elif i == vez:
+                st.markdown(f"🟡 {nome} (vez atual)")
+            else:
+                st.markdown(f"⚪ {nome}")
 
-# Final do evento
-elif ativo and vez >= len(ordem):
-    st.success("✅ Evento de multa finalizado com sucesso! Todas as ações foram concluídas.")
-    if eh_admin and st.button("🔁 Resetar evento para o próximo uso"):
-        evento_ref.set({"ativo": False})
-        st.success("Evento resetado com sucesso!")
-        st.rerun()
+        if vez < len(ordem):
+            id_vez = ordem[vez]
+            if id_time == id_vez:
+                st.success("É sua vez! Escolha jogadores para pagar a multa.")
+                st.markdown("Escolha um time adversário:")
+                times_ref = db.collection("times").stream()
+                for tdoc in times_ref:
+                    tid = tdoc.id
+                    if tid == id_time:
+                        continue
+                    if ja_perderam.get(tid, 0) >= 4:
+                        continue
+
+                    nome_t = tdoc.to_dict().get("nome")
+                    with st.expander(f"📂 {nome_t}"):
+                        elenco = db.collection("times").document(tid).collection("elenco").stream()
+                        for jogador in elenco:
+                            j = jogador.to_dict()
+                            bloqueado = any(j['nome'] == b['nome'] for b in bloqueios.get(tid, []))
+                            if bloqueado:
+                                st.markdown(f"🔒 {j['nome']} - {j['posicao']} (R$ {j['valor']:,.0f})")
+                            else:
+                                if st.button(f"Pagar multa por {j['nome']} (R$ {j['valor']:,.0f})", key=f"{tid}_{j['nome']}"):
+                                    # Transferência apenas no final, salva temporariamente
+                                    novo = roubos.get(id_time, [])
+                                    novo.append({"nome": j['nome'], "posicao": j['posicao'], "valor": j['valor'], "de": tid})
+                                    roubos[id_time] = novo
+                                    ja_perderam[tid] = ja_perderam.get(tid, 0) + 1
+                                    evento_ref.update({"roubos": roubos, "ja_perderam": ja_perderam})
+                                    st.success(f"Multa registrada por {j['nome']}")
+                                    st.rerun()
+
+                if len(roubos.get(id_time, [])) >= 5:
+                    st.info("Você já fez as 5 multas permitidas.")
+                if st.button("✅ Finalizar minha vez"):
+                    concluidos.append(id_time)
+                    evento_ref.update({"concluidos": concluidos, "vez": vez + 1})
+                    st.rerun()
+            elif eh_admin:
+                if st.button("⏭️ Pular vez do time atual"):
+                    evento_ref.update({"vez": vez + 1})
+                    st.rerun()
+
+    # FASE 3 - FINALIZADO
+    if evento.get("finalizado"):
+        st.success("✅ Evento finalizado. Veja o resumo:")
+        for tid, acoes in roubos.items():
+            nome_t = db.collection("times").document(tid).get().to_dict().get("nome")
+            st.markdown(f"### 🟦 {nome_t} comprou por multa:")
+            for j in acoes:
+                st.markdown(f"- {j['nome']} ({j['posicao']}) do time {db.collection('times').document(j['de']).get().to_dict().get('nome')}")
+                # Faz a transferência agora
+                try:
+                    db.collection("times").document(j['de']).collection("elenco").where("nome", "==", j['nome']).get()[0].reference.delete()
+                    db.collection("times").document(tid).collection("elenco").add(j)
+                    saldo_de = db.collection("times").document(j['de']).get().to_dict().get("saldo", 0)
+                    saldo_para = db.collection("times").document(tid).get().to_dict().get("saldo", 0)
+                    db.collection("times").document(j['de']).update({"saldo": saldo_de + j['valor']})
+                    db.collection("times").document(tid).update({"saldo": saldo_para - j['valor']})
+                    registrar_movimentacao(db, tid, j['nome'], "Multa", "Compra", j['valor'])
+                except Exception as e:
+                    st.error(f"Erro ao transferir {j['nome']}: {e}")
+
 else:
-    st.info("🔒 Aguardando sua vez ou o início do evento.")
-
+    st.warning("🔒 Evento de multa não está ativo.")
