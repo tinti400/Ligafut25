@@ -1,4 +1,4 @@
-import streamlit as st
+iimport streamlit as st
 from google.oauth2 import service_account
 import google.cloud.firestore as gc_firestore
 import pandas as pd
@@ -25,19 +25,17 @@ if "usuario_id" not in st.session_state or not st.session_state.usuario_id:
 id_time = st.session_state.id_time
 nome_time = st.session_state.nome_time
 
-st.markdown(f"<h1 style='text-align: center;'>💼 Finanças do {nome_time}</h1><hr>", unsafe_allow_html=True)
-
-# 💰 Exibe o saldo atual
+# 💰 Caixa atual
 try:
     time_doc = db.collection("times").document(id_time).get()
     saldo = time_doc.to_dict().get("saldo", 0)
-    saldo_formatado = f"R$ {saldo:,.0f}".replace(",", ".")
-    st.markdown(f"<h3 style='text-align: center;'>📦 Caixa Atual: {saldo_formatado}</h3><br>", unsafe_allow_html=True)
+    st.markdown(f"<h1 style='text-align: center;'>💼 Finanças do {nome_time}</h1><hr>", unsafe_allow_html=True)
+    st.markdown(f"<h3 style='text-align: center;'>💰 Caixa Atual: R$ {saldo:,.0f}</h3>", unsafe_allow_html=True)
 except Exception as e:
-    st.error(f"Erro ao buscar saldo: {e}")
+    st.error(f"Erro ao recuperar saldo do time: {e}")
     st.stop()
 
-# 📋 Recupera movimentações
+# 🔄 Recupera movimentações
 try:
     movs_ref = db.collection("times").document(id_time).collection("movimentacoes").stream()
     movimentacoes = [doc.to_dict() for doc in movs_ref]
@@ -45,15 +43,17 @@ except Exception as e:
     st.error(f"Erro ao buscar movimentações financeiras: {e}")
     st.stop()
 
-# 📊 Exibe a tabela de movimentações
+# 📋 Exibição
 if not movimentacoes:
     st.info("📭 Nenhuma movimentação financeira registrada.")
 else:
+    # Trata dados incompletos
+    for mov in movimentacoes:
+        mov["tipo"] = mov.get("tipo", "Desconhecido")
+        mov["jogador"] = mov.get("jogador", "Desconhecido")
+        mov["valor"] = mov.get("valor", 0)
+
     df = pd.DataFrame(movimentacoes)
-    if all(col in df.columns for col in ["tipo", "jogador", "valor", "origem"]):
-        df["valor"] = df["valor"].apply(lambda x: f"R$ {x:,.0f}".replace(",", "."))
-        df = df[["tipo", "origem", "jogador", "valor"]]
-        df.columns = ["Tipo", "Origem", "Jogador", "Valor"]
-        st.dataframe(df, use_container_width=True)
-    else:
-        st.warning("⚠️ Existem movimentações com dados incompletos.")
+    df["valor"] = df["valor"].apply(lambda x: f"R$ {x:,.0f}".replace(",", "."))
+    df.columns = [col.capitalize() for col in df.columns]
+    st.dataframe(df, use_container_width=True)
