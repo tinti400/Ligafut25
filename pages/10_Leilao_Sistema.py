@@ -1,17 +1,16 @@
 import streamlit as st
 from google.oauth2 import service_account
-from google.cloud import firestore
+import google.cloud.firestore as gc_firestore
 from utils import verificar_login
-from datetime import datetime, timedelta
+from datetime import datetime
 
-# Configuração da página
 st.set_page_config(page_title="Leilão - LigaFut", layout="wide")
 
-# Inicializa Firebase
+# 🔐 Inicializa Firebase
 if "firebase" not in st.session_state:
     try:
         cred = service_account.Credentials.from_service_account_info(st.secrets["firebase"])
-        db = firestore.Client(credentials=cred, project=st.secrets["firebase"]["project_id"])
+        db = gc_firestore.Client(credentials=cred, project=st.secrets["firebase"]["project_id"])
         st.session_state["firebase"] = db
     except Exception as e:
         st.error(f"Erro ao conectar ao Firebase: {e}")
@@ -19,10 +18,10 @@ if "firebase" not in st.session_state:
 else:
     db = st.session_state["firebase"]
 
-# Verifica login
+# ✅ Verifica login
 verificar_login()
 
-# Busca leilão ativo
+# 📄 Buscar leilão ativo
 doc_ref = db.collection("configuracoes").document("leilao_sistema")
 doc = doc_ref.get()
 
@@ -37,29 +36,23 @@ time_vencedor = leilao.get("time_vencedor", "")
 fim = leilao.get("fim")
 id_time_usuario = st.session_state.get("id_time", "")
 
-# Converte fim para datetime
-try:
-    if hasattr(fim, 'to_datetime'):
-        fim = fim.to_datetime()
-    elif isinstance(fim, str):
-        fim = datetime.fromisoformat(fim)
-except:
-    st.error("Erro ao converter o campo 'fim' do leilão.")
-    st.stop()
+# 🕒 Conversão do fim para datetime
+if hasattr(fim, 'timestamp'):
+    fim = fim.to_datetime()
 
-# Cronômetro regressivo
+# ⏳ Cronômetro regressivo
 try:
-    tempo_restante = (fim - datetime.now()).total_seconds()
+    tempo_restante = (fim - datetime.utcnow()).total_seconds()
     tempo_restante = max(0, int(tempo_restante))
     minutos, segundos = divmod(tempo_restante, 60)
+    st.markdown(f"<h2 style='text-align:center'>⏳ Tempo restante: {minutos:02d}:{segundos:02d}</h2>", unsafe_allow_html=True)
 except Exception as e:
-    st.error(f"Erro ao calcular o cronômetro: {e}")
-    st.stop()
+    st.error(f"Erro ao calcular tempo: {e}")
+    tempo_restante = 0
 
-st.markdown(f"<h2 style='text-align:center'>⏳ Tempo restante: {minutos:02d}:{segundos:02d}</h2>", unsafe_allow_html=True)
 st.markdown("---")
 
-# Exibição do jogador
+# 📋 Exibição do jogador
 col1, col2, col3, col4 = st.columns([2, 4, 2, 2])
 with col1:
     st.subheader(jogador.get("posicao", ""))
@@ -72,7 +65,7 @@ with col4:
 
 st.markdown("---")
 
-# Lances
+# 💸 Fazer lance
 if tempo_restante > 0:
     novo_lance = st.number_input("💸 Seu lance (mínimo: R$100.000 acima)", min_value=valor_atual + 100_000, step=100_000)
     if st.button("💥 Fazer Lance"):
@@ -83,7 +76,7 @@ if tempo_restante > 0:
             if novo_lance > saldo:
                 st.error("❌ Saldo insuficiente.")
             else:
-                agora = datetime.now()
+                agora = datetime.utcnow()
                 novo_fim = fim
                 if (fim - agora).total_seconds() <= 15:
                     novo_fim = agora + timedelta(seconds=15)
