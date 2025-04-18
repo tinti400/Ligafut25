@@ -115,12 +115,12 @@ if ativo:
             if f"{j['nome']} - {j['posicao']}" not in nomes_bloqueados_formatados
         ]
 
-        default_validos = [v for v in nomes_bloqueados_formatados if v in opcoes]
+        default_validos = [v for v in nomes_bloqueados_formatados if v in opcoes or v not in opcoes]
 
         escolhidos = st.multiselect(
             "Jogadores para bloquear:",
             options=opcoes,
-            default=default_validos,
+            default=default_validos[:4],
             max_selections=4
         )
 
@@ -152,10 +152,13 @@ if ativo:
 
         if vez < len(ordem):
             id_vez = ordem[vez]
-            if id_time == id_vez:
-                st.success("É sua vez! Escolha jogadores para pagar a multa.")
-                st.markdown("Escolha um time adversário:")
 
+            # Debug para garantir id_time vs id_vez
+            st.info(f"🆔 id_time (você): `{id_time}`")
+            st.info(f"🎯 id_vez (ordem): `{id_vez}`")
+
+            if id_time == id_vez:
+                st.success("🎯 É sua vez! Escolha jogadores para pagar a multa.")
                 times_ref = db.collection("times").stream()
                 for tdoc in times_ref:
                     tid = tdoc.id
@@ -188,7 +191,7 @@ if ativo:
                                     st.rerun()
 
                 if len(roubos.get(id_time, [])) >= 5:
-                    st.info("Você já fez as 5 multas permitidas.")
+                    st.info("✅ Você já fez as 5 multas permitidas.")
                 if st.button("✅ Finalizar minha vez"):
                     concluidos.append(id_time)
                     evento_ref.update({"concluidos": concluidos, "vez": vez + 1})
@@ -217,6 +220,5 @@ if ativo:
                     registrar_movimentacao(db, tid, j['nome'], "Multa", "Compra", j['valor'])
                 except Exception as e:
                     st.error(f"Erro ao transferir {j['nome']}: {e}")
-
 else:
     st.warning("🔒 Evento de multa não está ativo.")
