@@ -78,8 +78,15 @@ st.markdown("---")
 # Finaliza leilão e move jogador para elenco
 if tempo_restante == 0 and id_time_vencedor and jogador:
     try:
+        # Adiciona jogador ao elenco com posição e valor do lance
+        jogador_atualizado = {
+            "nome": jogador.get("nome", ""),
+            "posicao": jogador.get("posicao", ""),
+            "overall": jogador.get("overall", 0),
+            "valor": valor_atual
+        }
         elenco_ref = db.collection("times").document(id_time_vencedor).collection("elenco")
-        elenco_ref.add(jogador)
+        elenco_ref.add(jogador_atualizado)
 
         # Debita valor
         time_doc = db.collection("times").document(id_time_vencedor)
@@ -126,4 +133,3 @@ if tempo_restante > 0:
             st.error(f"Erro ao registrar lance: {e}")
 else:
     st.info("⏱️ O tempo do leilão acabou.")
-
