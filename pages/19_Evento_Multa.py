@@ -94,14 +94,19 @@ if ativo:
 
     st.success(f"Evento ativo - Fase: {fase.upper()}")
 
+    # FASE 1 - BLOQUEIO
     if fase == "bloqueio":
         st.subheader("⛔ Bloqueie até 4 jogadores do seu elenco")
         elenco_ref = db.collection("times").document(id_time).collection("elenco").stream()
-        elenco = [doc.to_dict() | {"id": doc.id} for doc in elenco_ref if 'nome' in doc.to_dict() and 'posicao' in doc.to_dict()]
+        elenco = [
+            doc.to_dict() | {"id": doc.id}
+            for doc in elenco_ref
+            if "nome" in doc.to_dict() and "posicao" in doc.to_dict()
+        ]
 
         bloqueados = bloqueios.get(id_time, [])
         nomes_bloqueados_formatados = [
-            f"{j.get('nome', '')} - {j.get('posicao', '')}" for j in bloqueados if 'nome' in j and 'posicao' in j
+            f"{j['nome']} - {j['posicao']}" for j in bloqueados if 'nome' in j and 'posicao' in j
         ]
 
         opcoes = [
@@ -114,23 +119,26 @@ if ativo:
 
         escolhidos = st.multiselect(
             "Jogadores para bloquear:",
-            options=opcoes + default_validos,
+            options=opcoes,
             default=default_validos,
             max_selections=4
         )
 
-        if st.button("🔐 Salvar bloqueios"):
+        if st.button("🔒 Salvar bloqueios"):
             novos = [j for j in elenco if f"{j['nome']} - {j['posicao']}" in escolhidos]
             bloqueios[id_time] = novos
             evento_ref.update({"bloqueios": bloqueios})
             st.success("Bloqueios salvos.")
             st.rerun()
 
-        if eh_admin and st.button("➡️ Avançar para Ação"):
-            evento_ref.update({"fase": "acao"})
-            st.success("Avançou para fase de ação.")
-            st.rerun()
+        if eh_admin:
+            st.markdown("🛠️ Admin: Avance para a fase de ação quando todos terminarem o bloqueio.")
+            if st.button("➡️ Avançar para Ação"):
+                evento_ref.update({"fase": "acao"})
+                st.success("Avançou para fase de ação.")
+                st.rerun()
 
+    # FASE 2 - AÇÃO
     elif fase == "acao":
         st.subheader("🎯 Ordem e Vez Atual")
         for i, tid in enumerate(ordem):
@@ -163,11 +171,16 @@ if ativo:
                                 continue
                             bloqueado = any(j['nome'] == b.get('nome') for b in bloqueios.get(tid, []))
                             if bloqueado:
-                                st.markdown(f"🔐 {j['nome']} - {j['posicao']} (R$ {j['valor']:,.0f})")
+                                st.markdown(f"🔒 {j['nome']} - {j['posicao']} (R$ {j.get('valor', 0):,.0f})")
                             else:
-                                if st.button(f"Pagar multa por {j['nome']} (R$ {j['valor']:,.0f})", key=f"{tid}_{j['nome']}"):
+                                if st.button(f"Pagar multa por {j['nome']} (R$ {j.get('valor', 0):,.0f})", key=f"{tid}_{j['nome']}"):
                                     novo = roubos.get(id_time, [])
-                                    novo.append({"nome": j['nome'], "posicao": j['posicao'], "valor": j['valor'], "de": tid})
+                                    novo.append({
+                                        "nome": j['nome'],
+                                        "posicao": j['posicao'],
+                                        "valor": j.get("valor", 0),
+                                        "de": tid
+                                    })
                                     roubos[id_time] = novo
                                     ja_perderam[tid] = ja_perderam.get(tid, 0) + 1
                                     evento_ref.update({"roubos": roubos, "ja_perderam": ja_perderam})
@@ -185,11 +198,12 @@ if ativo:
                     evento_ref.update({"vez": vez + 1})
                     st.rerun()
 
+    # FASE 3 - FINALIZADO
     if evento.get("finalizado"):
         st.success("✅ Evento finalizado. Veja o resumo:")
         for tid, acoes in roubos.items():
             nome_t = db.collection("times").document(tid).get().to_dict().get("nome", "Desconhecido")
-            st.markdown(f"### 🔾 {nome_t} comprou por multa:")
+            st.markdown(f"### 🟦 {nome_t} comprou por multa:")
             for j in acoes:
                 nome_vendido = db.collection("times").document(j['de']).get().to_dict().get("nome", "")
                 st.markdown(f"- {j['nome']} ({j['posicao']}) do time {nome_vendido}")
@@ -203,5 +217,6 @@ if ativo:
                     registrar_movimentacao(db, tid, j['nome'], "Multa", "Compra", j['valor'])
                 except Exception as e:
                     st.error(f"Erro ao transferir {j['nome']}: {e}")
+
 else:
     st.warning("🔒 Evento de multa não está ativo.")
