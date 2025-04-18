@@ -1,70 +1,55 @@
 import streamlit as st
-import firebase_admin
-from firebase_admin import credentials, firestore
+from google.oauth2 import service_account
+from google.cloud import firestore
 from utils import verificar_login
 from datetime import datetime
 
 st.set_page_config(page_title="Histórico de Transferências", layout="wide")
 
-# Inicializar Firebase
-if not firebase_admin._apps:
-    cred = credentials.Certificate("credenciais.json")
-    firebase_admin.initialize_app(cred)
+# 🔐 Inicializa Firebase com st.secrets
+if "firebase" not in st.session_state:
+    try:
+        cred = service_account.Credentials.from_service_account_info(st.secrets["firebase"])
+        db = firestore.Client(credentials=cred, project=st.secrets["firebase"]["project_id"])
+        st.session_state["firebase"] = db
+    except Exception as e:
+        st.error(f"Erro ao conectar ao Firebase: {e}")
+        st.stop()
+else:
+    db = st.session_state["firebase"]
 
-db = firestore.client()
-
-# Verificar login
+# ✅ Verifica login
 verificar_login()
+
+id_time = st.session_state["id_time"]
+nome_time = st.session_state["nome_time"]
 
 st.title("📜 Histórico de Transferências")
 
-# Filtros
-st.subheader("🔍 Filtro de Busca")
+# 🔎 Buscar movimentações financeiras do time logado
+mov_ref = db.collection("times").document(id_time).collection("movimentacoes") \
+            .order_by("data", direction=firestore.Query.DESCENDING).stream()
 
-filtro_jogador = st.text_input("Buscar por nome do jogador")
-filtro_time = st.text_input("Buscar por nome do time (Origem ou Destino)")
+movimentacoes = [doc.to_dict() for doc in mov_ref]
 
-# Buscar transferências
-transferencias_ref = db.collection("transferencias_concluidas").order_by("timestamp", direction=firestore.Query.DESCENDING).stream()
-transferencias = [doc.to_dict() for doc in transferencias_ref]
-
-# Aplica Filtros
-transferencias_filtradas = []
-for trans in transferencias:
-    jogador = trans.get("jogador", "").lower()
-    time_origem = trans.get("time_origem", "").lower()
-    time_destino = trans.get("time_destino", "").lower()
-
-    if filtro_jogador.lower() in jogador and (filtro_time.lower() in time_origem or filtro_time.lower() in time_destino):
-        transferencias_filtradas.append(trans)
-
-if not transferencias_filtradas:
-    st.info("Nenhuma transferência encontrada com os filtros aplicados.")
+if not movimentacoes:
+    st.info("Nenhuma movimentação registrada.")
 else:
-    for trans in transferencias_filtradas:
-        jogador = trans.get("jogador", "Jogador")
-        time_origem = trans.get("time_origem", "Desconhecido")
-        time_destino = trans.get("time_destino", "Desconhecido")
-        valor = trans.get("valor", 0)
-        data = trans.get("timestamp")
+    for mov in movimentacoes:
+        jogador = mov.get("jogador", "Desconhecido")
+        categoria = mov.get("categoria", "N/A")
+        tipo = mov.get("tipo", "N/A")
+        valor = mov.get("valor", 0)
+        data = mov.get("data", None)
 
         if isinstance(data, datetime):
-            data_str = data.strftime("%d/%m/%Y - %H:%M")
+            data_str = data.strftime('%d/%m/%Y %H:%M')
         else:
-            data_str = ""
+            data_str = "Data não disponível"
 
         st.markdown("---")
-        col1, col2, col3, col4, col5 = st.columns([2, 2, 2, 2, 2])
-        with col1:
-            st.write(f"**{jogador}**")
-        with col2:
-            st.write(f"Origem: {time_origem}")
-        with col3:
-            st.write(f"Destino: {time_destino}")
-        with col4:
-            if valor > 0:
-                st.write(f"Valor: R$ {valor:,.0f}")
-            else:
-                st.write("Transferência via troca")
-        with col5:
-            st.write(data_str)
+        st.markdown(f"**👤 Jogador:** {jogador}")
+        st.markdown(f"**📂 Categoria:** {categoria}")
+        st.markdown(f"**💬 Tipo:** {tipo}")
+        st.markdown(f"**💰 Valor:** R$ {valor:,.0f}".replace(",", "."))
+        st.markdown(f"**📅 Data:** {data_str}")
