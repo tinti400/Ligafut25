@@ -75,12 +75,9 @@ if botao_leiloar and jogador_escolhido:
 
         db.collection("configuracoes").document("leilao_sistema").set(dados_leilao)
 
-        # Remove jogador do elenco do time
         db.collection("times").document(id_time).collection("elenco").document(jogador_escolhido["id_doc"]).delete()
 
         st.success("✅ Jogador enviado para o leilão com sucesso!")
         st.rerun()
     except Exception as e:
         st.error(f"Erro ao iniciar leilão: {e}")
-
-
