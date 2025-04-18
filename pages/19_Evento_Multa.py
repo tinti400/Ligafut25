@@ -39,17 +39,15 @@ evento = evento_doc.to_dict() if evento_doc.exists else {}
 ativo = evento.get("ativo", False)
 inicio_ts = evento.get("inicio")
 
-# ✅ Conversão segura de timestamp
-inicio = None
-try:
-    if hasattr(inicio_ts, "to_datetime"):
-        inicio = inicio_ts.to_datetime().replace(tzinfo=None)
-    elif isinstance(inicio_ts, datetime):
-        inicio = inicio_ts.replace(tzinfo=None)
-except:
+# Conversão segura do timestamp
+if isinstance(inicio_ts, datetime):
+    inicio = inicio_ts.replace(tzinfo=None)
+elif hasattr(inicio_ts, "to_datetime"):
+    inicio = inicio_ts.to_datetime().replace(tzinfo=None)
+else:
     inicio = None
 
-# ---------------------- ADMIN ----------------------
+# ADMIN
 if eh_admin:
     st.markdown("### 👑 Painel do Administrador")
     if not ativo:
@@ -83,7 +81,7 @@ if eh_admin:
             except Exception as e:
                 st.error(f"Erro ao encerrar: {e}")
 
-# ---------------------- STATUS ----------------------
+# STATUS
 st.markdown("---")
 if ativo:
     fase = evento.get("fase", "bloqueio")
@@ -96,46 +94,33 @@ if ativo:
 
     st.success(f"Evento ativo - Fase: {fase.upper()}")
 
-    # FASE 1 - BLOQUEIO
     if fase == "bloqueio":
         st.subheader("⛔ Bloqueie até 4 jogadores do seu elenco")
         elenco_ref = db.collection("times").document(id_time).collection("elenco").stream()
         elenco = [doc.to_dict() | {"id": doc.id} for doc in elenco_ref]
 
         bloqueados = bloqueios.get(id_time, [])
-        nomes_bloqueados_formatados = []
-        for j in bloqueados:
-            try:
-                nomes_bloqueados_formatados.append(f"{j['nome']} - {j['posicao']}")
-            except KeyError:
-                pass
+        nomes_bloqueados_formatados = [
+            f"{j['nome']} - {j['posicao']}" for j in bloqueados if 'nome' in j and 'posicao' in j
+        ]
 
-        opcoes = []
-        for j in elenco:
-            try:
-                op = f"{j['nome']} - {j['posicao']}"
-                if op not in nomes_bloqueados_formatados:
-                    opcoes.append(op)
-            except KeyError:
-                continue
+        opcoes = [
+            f"{j['nome']} - {j['posicao']}"
+            for j in elenco
+            if 'nome' in j and 'posicao' in j and f"{j['nome']} - {j['posicao']}" not in nomes_bloqueados_formatados
+        ]
+
+        default_validos = [v for v in nomes_bloqueados_formatados if v in opcoes]
 
         escolhidos = st.multiselect(
             "Jogadores para bloquear:",
             options=opcoes,
-            default=nomes_bloqueados_formatados,
+            default=default_validos,
             max_selections=4
         )
 
         if st.button("🔒 Salvar bloqueios"):
-            novos = []
-            for j in elenco:
-                chave = f"{j.get('nome')} - {j.get('posicao')}"
-                if chave in escolhidos:
-                    novos.append({
-                        "nome": j.get("nome"),
-                        "posicao": j.get("posicao"),
-                        "valor": j.get("valor", 0)
-                    })
+            novos = [j for j in elenco if f"{j['nome']} - {j['posicao']}" in escolhidos]
             bloqueios[id_time] = novos
             evento_ref.update({"bloqueios": bloqueios})
             st.success("Bloqueios salvos.")
@@ -146,7 +131,6 @@ if ativo:
             st.success("Avançou para fase de ação.")
             st.rerun()
 
-    # FASE 2 - AÇÃO
     elif fase == "acao":
         st.subheader("🎯 Ordem e Vez Atual")
         for i, tid in enumerate(ordem):
@@ -175,7 +159,9 @@ if ativo:
                         elenco = db.collection("times").document(tid).collection("elenco").stream()
                         for jogador in elenco:
                             j = jogador.to_dict()
-                            bloqueado = any(j['nome'] == b['nome'] for b in bloqueios.get(tid, []))
+                            if 'nome' not in j or 'posicao' not in j:
+                                continue
+                            bloqueado = any(j['nome'] == b.get('nome') for b in bloqueios.get(tid, []))
                             if bloqueado:
                                 st.markdown(f"🔒 {j['nome']} - {j['posicao']} (R$ {j['valor']:,.0f})")
                             else:
@@ -199,7 +185,6 @@ if ativo:
                     evento_ref.update({"vez": vez + 1})
                     st.rerun()
 
-    # FASE 3 - FINALIZADO
     if evento.get("finalizado"):
         st.success("✅ Evento finalizado. Veja o resumo:")
         for tid, acoes in roubos.items():
