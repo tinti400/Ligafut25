@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 
 st.set_page_config(page_title="Admin - Leilão", layout="wide")
 
-# 🔐 Inicializa Firebase
+# Inicializa Firebase
 if "firebase" not in st.session_state:
     try:
         cred = service_account.Credentials.from_service_account_info(st.secrets["firebase"])
@@ -32,37 +32,43 @@ with st.form("form_leilao"):
     duracao = st.slider("Duração do Leilão (minutos)", min_value=1, max_value=10, value=2)
     botao_criar = st.form_submit_button("Criar Leilão")
 
-# 🔄 Atualiza Firestore com novo leilão
+# 🔄 Cria novo leilão
 if botao_criar:
     if not nome:
         st.warning("Informe o nome do jogador.")
     else:
         fim = datetime.utcnow() + timedelta(minutes=duracao)
+        inicio = datetime.utcnow()
+
         dados_leilao = {
-            "nome": nome,
-            "posição": posicao,
-            "overall": overall,
-            "valor_atual": valor_inicial,
+            "jogador": {
+                "nome": nome,
+                "posicao": posicao,
+                "overall": overall,
+            },
             "valor_inicial": valor_inicial,
+            "valor_atual": valor_inicial,
             "id_time_atual": None,
             "ultimo_lance": None,
+            "inicio": inicio,
+            "fim": fim,
             "ativo": True,
-            "fim": fim.isoformat()
+            "time_vencedor": "",
         }
 
         try:
             db.collection("configuracoes").document("leilao_sistema").set(dados_leilao)
-            st.success("✅ Leilão criado com sucesso!")
+            st.success(f"✅ Leilão do jogador **{nome}** criado com sucesso!")
+            st.balloons()
             st.rerun()
         except Exception as e:
             st.error(f"Erro ao criar leilão: {e}")
 
-# 🔘 Controle de ativação e desativação
+# 🔘 Controle de ativação
 st.markdown("---")
 st.markdown("### ⚙️ Controle de Leilão")
 
 col1, col2 = st.columns(2)
-
 with col1:
     if st.button("✅ Ativar Leilão"):
         db.collection("configuracoes").document("leilao_sistema").update({"ativo": True})
