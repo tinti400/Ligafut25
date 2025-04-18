@@ -39,12 +39,14 @@ evento = evento_doc.to_dict() if evento_doc.exists else {}
 ativo = evento.get("ativo", False)
 inicio_ts = evento.get("inicio")
 
-# ✅ Conversão segura do timestamp
-if isinstance(inicio_ts, datetime):
-    inicio = inicio_ts.replace(tzinfo=None)
-elif hasattr(inicio_ts, "to_datetime"):
-    inicio = inicio_ts.to_datetime().replace(tzinfo=None)
-else:
+# ✅ Conversão segura de timestamp
+inicio = None
+try:
+    if hasattr(inicio_ts, "to_datetime"):
+        inicio = inicio_ts.to_datetime().replace(tzinfo=None)
+    elif isinstance(inicio_ts, datetime):
+        inicio = inicio_ts.replace(tzinfo=None)
+except:
     inicio = None
 
 # ---------------------- ADMIN ----------------------
@@ -103,18 +105,37 @@ if ativo:
         bloqueados = bloqueios.get(id_time, [])
         nomes_bloqueados_formatados = []
         for j in bloqueados:
-            nome = j.get("nome", "")
-            posicao = j.get("posicao", j.get("posição", ""))
-            nomes_bloqueados_formatados.append(f"{nome} - {posicao}")
+            try:
+                nomes_bloqueados_formatados.append(f"{j['nome']} - {j['posicao']}")
+            except KeyError:
+                pass
 
-        opcoes = [f"{j.get('nome', '')} - {j.get('posicao', j.get('posição', ''))}" for j in elenco]
+        opcoes = []
+        for j in elenco:
+            try:
+                op = f"{j['nome']} - {j['posicao']}"
+                if op not in nomes_bloqueados_formatados:
+                    opcoes.append(op)
+            except KeyError:
+                continue
 
-        # Garante que os default estão nas opções para evitar erro
-        nomes_bloqueados_formatados = [nome for nome in nomes_bloqueados_formatados if nome in opcoes]
+        escolhidos = st.multiselect(
+            "Jogadores para bloquear:",
+            options=opcoes,
+            default=nomes_bloqueados_formatados,
+            max_selections=4
+        )
 
-        escolhidos = st.multiselect("Jogadores para bloquear:", options=opcoes, default=nomes_bloqueados_formatados, max_selections=4)
         if st.button("🔒 Salvar bloqueios"):
-            novos = [j for j in elenco if f"{j.get('nome')} - {j.get('posicao', j.get('posição', '') )}" in escolhidos]
+            novos = []
+            for j in elenco:
+                chave = f"{j.get('nome')} - {j.get('posicao')}"
+                if chave in escolhidos:
+                    novos.append({
+                        "nome": j.get("nome"),
+                        "posicao": j.get("posicao"),
+                        "valor": j.get("valor", 0)
+                    })
             bloqueios[id_time] = novos
             evento_ref.update({"bloqueios": bloqueios})
             st.success("Bloqueios salvos.")
@@ -146,9 +167,7 @@ if ativo:
                 times_ref = db.collection("times").stream()
                 for tdoc in times_ref:
                     tid = tdoc.id
-                    if tid == id_time:
-                        continue
-                    if ja_perderam.get(tid, 0) >= 4:
+                    if tid == id_time or ja_perderam.get(tid, 0) >= 4:
                         continue
 
                     nome_t = tdoc.to_dict().get("nome", "Desconhecido")
@@ -197,3 +216,7 @@ if ativo:
                     db.collection("times").document(j['de']).update({"saldo": saldo_de + j['valor']})
                     db.collection("times").document(tid).update({"saldo": saldo_para - j['valor']})
                     registrar_movimentacao(db, tid, j['nome'], "Multa", "Compra", j['valor'])
+                except Exception as e:
+                    st.error(f"Erro ao transferir {j['nome']}: {e}")
+else:
+    st.warning("🔒 Evento de multa não está ativo.")
