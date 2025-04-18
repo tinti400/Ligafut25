@@ -40,36 +40,39 @@ except Exception as e:
     st.error(f"Erro ao buscar rodadas: {e}")
     st.stop()
 
-# Processa resultados para tabela
+# Processa toda a pontuação antes de mostrar rodadas
 for rodada_doc in rodadas:
     jogos = rodada_doc.to_dict().get("jogos", [])
     for jogo in jogos:
-        mandante = jogo["mandante"]
-        visitante = jogo["visitante"]
         gm = jogo.get("gols_mandante")
         gv = jogo.get("gols_visitante")
+        if gm is None or gv is None:
+            continue
 
-        if gm is not None and gv is not None:
-            for time_id in [mandante, visitante]:
-                if time_id not in tabela:
-                    continue
-                tabela[time_id]["J"] += 1
+        mandante = jogo["mandante"]
+        visitante = jogo["visitante"]
 
-            tabela[mandante]["GP"] += gm
-            tabela[mandante]["GC"] += gv
-            tabela[visitante]["GP"] += gv
-            tabela[visitante]["GC"] += gm
+        for time_id in [mandante, visitante]:
+            if time_id not in tabela:
+                continue
+            tabela[time_id]["J"] += 1
 
-            if gm > gv:
-                tabela[mandante]["V"] += 1
-                tabela[visitante]["D"] += 1
-            elif gv > gm:
-                tabela[visitante]["V"] += 1
-                tabela[mandante]["D"] += 1
-            else:
-                tabela[mandante]["E"] += 1
-                tabela[visitante]["E"] += 1
+        tabela[mandante]["GP"] += gm
+        tabela[mandante]["GC"] += gv
+        tabela[visitante]["GP"] += gv
+        tabela[visitante]["GC"] += gm
 
+        if gm > gv:
+            tabela[mandante]["V"] += 1
+            tabela[visitante]["D"] += 1
+        elif gv > gm:
+            tabela[visitante]["V"] += 1
+            tabela[mandante]["D"] += 1
+        else:
+            tabela[mandante]["E"] += 1
+            tabela[visitante]["E"] += 1
+
+# Calcula pontos
 for t in tabela.values():
     t["P"] = t["V"] * 3 + t["E"]
     t["SG"] = t["GP"] - t["GC"]
@@ -104,7 +107,7 @@ with col_btn2:
 
 st.session_state["rodada_atual_idx"] = rodada_atual_idx
 
-# Exibe rodada atual
+# Exibe apenas a rodada selecionada
 rodada_doc = rodadas[rodada_atual_idx]
 rodada_data = rodada_doc.to_dict()
 numero_rodada = rodada_data.get("numero", "?")
@@ -125,13 +128,21 @@ for idx, jogo in enumerate(jogos):
     with col1:
         st.markdown(f"<span style='font-size:15px'>{nome_mandante}</span>", unsafe_allow_html=True)
     with col2:
-        valor_padrao_gm = gols_mandante if gols_mandante is not None else 0
-        gm = st.number_input(" ", min_value=0, step=1, value=valor_padrao_gm, key=f"{rodada_doc.id}_{idx}_gm")
+        gm = st.number_input(
+            " ", min_value=0, step=1,
+            value=gols_mandante if gols_mandante is not None else 0,
+            placeholder="Gols",
+            key=f"{rodada_doc.id}_{idx}_gm"
+        )
     with col3:
         st.markdown("x")
     with col4:
-        valor_padrao_gv = gols_visitante if gols_visitante is not None else 0
-        gv = st.number_input("  ", min_value=0, step=1, value=valor_padrao_gv, key=f"{rodada_doc.id}_{idx}_gv")
+        gv = st.number_input(
+            "  ", min_value=0, step=1,
+            value=gols_visitante if gols_visitante is not None else 0,
+            placeholder="Gols",
+            key=f"{rodada_doc.id}_{idx}_gv"
+        )
     with col5:
         st.markdown(f"<span style='font-size:15px'>{nome_visitante}</span>", unsafe_allow_html=True)
     with col6:
