@@ -98,25 +98,12 @@ if ativo:
     if fase == "bloqueio":
         st.subheader("⛔ Bloqueie até 4 jogadores do seu elenco")
         elenco_ref = db.collection("times").document(id_time).collection("elenco").stream()
-        elenco = [
-            doc.to_dict() | {"id": doc.id}
-            for doc in elenco_ref
-            if "nome" in doc.to_dict()
-        ]
-        # Define posição desconhecida se não existir
-        for j in elenco:
-            j["posicao"] = j.get("posicao", "Desconhecida")
+        elenco = [doc.to_dict() | {"id": doc.id} for doc in elenco_ref if "nome" in doc.to_dict() and "posicao" in doc.to_dict()]
 
         bloqueados = bloqueios.get(id_time, [])
-        nomes_bloqueados_formatados = [
-            f"{j['nome']} - {j.get('posicao', 'Desconhecida')}" for j in bloqueados if 'nome' in j
-        ]
+        nomes_bloqueados_formatados = [f"{j['nome']} - {j['posicao']}" for j in bloqueados if 'nome' in j and 'posicao' in j]
 
-        opcoes = [
-            f"{j['nome']} - {j.get('posicao', 'Desconhecida')}"
-            for j in elenco
-            if f"{j['nome']} - {j.get('posicao', 'Desconhecida')}" not in nomes_bloqueados_formatados
-        ]
+        opcoes = [f"{j['nome']} - {j['posicao']}" for j in elenco if f"{j['nome']} - {j['posicao']}" not in nomes_bloqueados_formatados]
 
         default_validos = [v for v in nomes_bloqueados_formatados if v in opcoes]
 
@@ -128,7 +115,7 @@ if ativo:
         )
 
         if st.button("🔒 Salvar bloqueios"):
-            novos = [j for j in elenco if f"{j['nome']} - {j.get('posicao', 'Desconhecida')}" in escolhidos]
+            novos = [j for j in elenco if f"{j['nome']} - {j['posicao']}" in escolhidos]
             bloqueios[id_time] = novos
             evento_ref.update({"bloqueios": bloqueios})
             st.success("Bloqueios salvos.")
@@ -170,9 +157,17 @@ if ativo:
                         elenco = db.collection("times").document(tid).collection("elenco").stream()
                         for jogador in elenco:
                             j = jogador.to_dict()
-                            if "nome" not in j:
+                            if 'nome' not in j or 'posicao' not in j:
                                 continue
-                            j["posicao"] = j.get("posicao", "Desconhecida")
+
+                            # Verifica se já foi selecionado por outro time
+                            ja_roubado = any(
+                                j["nome"] == r["nome"] and tid == r["de"]
+                                for lst in roubos.values() for r in lst
+                            )
+                            if ja_roubado:
+                                continue
+
                             bloqueado = any(j['nome'] == b.get('nome') for b in bloqueios.get(tid, []))
                             if bloqueado:
                                 st.markdown(f"🔒 {j['nome']} - {j['posicao']} (R$ {j.get('valor', 0):,.0f})")
@@ -198,7 +193,7 @@ if ativo:
                     evento_ref.update({"concluidos": concluidos, "vez": vez + 1})
                     st.rerun()
             elif eh_admin:
-                if st.button("⏭️ Pular vez do time atual"):
+                if st.button("⏩ Pular vez do time atual"):
                     evento_ref.update({"vez": vez + 1})
                     st.rerun()
 
@@ -207,10 +202,10 @@ if ativo:
         st.success("✅ Evento finalizado. Veja o resumo:")
         for tid, acoes in roubos.items():
             nome_t = db.collection("times").document(tid).get().to_dict().get("nome", "Desconhecido")
-            st.markdown(f"### 🟦 {nome_t} comprou por multa:")
+            st.markdown(f"### 🗭 {nome_t} comprou por multa:")
             for j in acoes:
                 nome_vendido = db.collection("times").document(j['de']).get().to_dict().get("nome", "")
-                st.markdown(f"- {j['nome']} ({j.get('posicao', 'Desconhecida')}) do time {nome_vendido}")
+                st.markdown(f"- {j['nome']} ({j['posicao']}) do time {nome_vendido}")
                 try:
                     db.collection("times").document(j['de']).collection("elenco").where("nome", "==", j['nome']).get()[0].reference.delete()
                     db.collection("times").document(tid).collection("elenco").add(j)
@@ -221,7 +216,5 @@ if ativo:
                     registrar_movimentacao(db, tid, j['nome'], "Multa", "Compra", j['valor'])
                 except Exception as e:
                     st.error(f"Erro ao transferir {j['nome']}: {e}")
-
 else:
     st.warning("🔒 Evento de multa não está ativo.")
-
