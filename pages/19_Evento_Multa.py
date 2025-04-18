@@ -1,12 +1,12 @@
 import streamlit as st
 from google.oauth2 import service_account
 from google.cloud import firestore
+from datetime import datetime
 from utils import verificar_login
-import datetime
 
-st.set_page_config(page_title="🚨 Evento de Multa", layout="wide")
+st.set_page_config(page_title="Evento de Multa - LigaFut", layout="wide")
 
-# 🔐 Inicializa Firebase com st.secrets
+# Inicializa Firebase
 if "firebase" not in st.session_state:
     try:
         cred = service_account.Credentials.from_service_account_info(st.secrets["firebase"])
@@ -18,47 +18,43 @@ if "firebase" not in st.session_state:
 else:
     db = st.session_state["firebase"]
 
-# ✅ Verifica se o usuário está logado
+# Verifica login
 verificar_login()
 
-# Dados do usuário logado
-id_time = st.session_state["id_time"]
-nome_time = st.session_state["nome_time"]
+st.title("🚨 Evento de Multa - LigaFut")
 
-st.markdown(f"## 🛡️ Proteja seus jogadores - {nome_time}")
+# Verifica se o usuário é administrador
+usuario = st.session_state.get("usuario_logado", "")
+admin_ref = db.collection("admins").document(usuario).get()
+eh_admin = admin_ref.exists
 
-# Busca elenco do time logado
-elenco_ref = db.collection("times").document(id_time).collection("elenco").stream()
-elenco = [doc.to_dict() | {"id_doc": doc.id} for doc in elenco_ref]
+evento_ref = db.collection("configuracoes").document("evento_multa")
+evento_doc = evento_ref.get()
+evento_dados = evento_doc.to_dict() if evento_doc.exists else {}
 
-# Busca jogadores protegidos no último evento
-protecao_ref = db.collection("eventos_multa").document("protecoes").collection(id_time).stream()
-protegidos_anteriores = [doc.id for doc in protecao_ref]
+evento_ativo = evento_dados.get("ativo", False)
+inicio = evento_dados.get("inicio", None)
 
-# Interface para proteger até 4 jogadores
-jogadores_disponiveis = [j["nome"] for j in elenco if j["nome"] not in protegidos_anteriores]
-selecionados = st.multiselect("Escolha até 4 jogadores para proteger:", jogadores_disponiveis, max_selections=4)
-
-if st.button("✅ Confirmar Proteção"):
-    if not selecionados:
-        st.warning("Selecione pelo menos um jogador.")
-        st.stop()
-
-    try:
-        protecoes_path = db.collection("eventos_multa").document("protecoes").collection(id_time)
-        # Apaga proteções anteriores
-        for doc in db.collection("eventos_multa").document("protecoes").collection(id_time).stream():
-            protecoes_path.document(doc.id).delete()
-
-        # Salva novas proteções
-        for nome in selecionados:
-            protecoes_path.document(nome).set({
-                "nome": nome,
-                "data": datetime.datetime.now()
+# Admin pode iniciar o evento manualmente
+if eh_admin:
+    st.markdown("### 👑 Painel do Administrador")
+    if not evento_ativo:
+        if st.button("🚀 Iniciar Evento de Multa"):
+            evento_ref.set({
+                "ativo": True,
+                "inicio": datetime.now(),
             })
+            st.success("Evento de multa iniciado com sucesso!")
+            st.rerun()
+    else:
+        st.info("✅ Evento de multa já está ativo.")
 
-        st.success("🎯 Jogadores protegidos com sucesso!")
-        st.rerun()
-
-    except Exception as e:
-        st.error(f"Erro ao proteger jogadores: {e}")
+# Exibição do status do evento
+st.markdown("---")
+if evento_ativo:
+    st.success("🟢 Evento de multa está ATIVO.")
+    if inicio:
+        st.markdown(f"📅 Iniciado em: **{inicio.strftime('%d/%m/%Y %H:%M:%S')}**")
+    st.info("⚠️ O evento está em andamento. Aguarde seu momento de ação.")
+else:
+    st.warning("🔒 O evento de multa ainda **não foi iniciado**.")
