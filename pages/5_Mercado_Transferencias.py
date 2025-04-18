@@ -1,10 +1,12 @@
 import streamlit as st
 from google.oauth2 import service_account
 import google.cloud.firestore as gc_firestore
+import pandas as pd
+from utils import registrar_movimentacao
 
 st.set_page_config(page_title="Mercado de Transferências - LigaFut", layout="wide")
 
-# 🔐 Inicialização via st.secrets (modo Cloud seguro)
+# 🔐 Firebase
 if "firebase" not in st.session_state:
     try:
         cred = service_account.Credentials.from_service_account_info(st.secrets["firebase"])
@@ -16,68 +18,129 @@ if "firebase" not in st.session_state:
 else:
     db = st.session_state["firebase"]
 
-# ✅ Verificação de login
+# ✅ Verifica login
 if "usuario_id" not in st.session_state or not st.session_state.usuario_id:
     st.warning("Você precisa estar logado para acessar esta página.")
     st.stop()
 
+id_usuario = st.session_state.usuario_id
 id_time = st.session_state.id_time
 nome_time = st.session_state.nome_time
 
-st.markdown(f"<h1 style='text-align: center;'>🏪 Mercado de Transferências</h1><hr>", unsafe_allow_html=True)
+# 👑 Verifica se é admin
+admin_ref = db.collection("admins").document(id_usuario).get()
+eh_admin = admin_ref.exists
 
-# 🔄 Carrega jogadores no mercado
-try:
-    mercado_ref = db.collection("mercado_transferencias").stream()
-    jogadores = [{"id": doc.id, **doc.to_dict()} for doc in mercado_ref]
-except Exception as e:
-    st.error(f"Erro ao buscar jogadores do mercado: {e}")
-    st.stop()
+# 💵 Saldo do time
+saldo_time = db.collection("times").document(id_time).get().to_dict().get("saldo", 0)
+st.title("💰 Mercado de Transferências")
+st.markdown(f"### 💼 Saldo atual: **R$ {saldo_time:,.0f}**".replace(",", "."))
 
-if not jogadores:
-    st.info("📭 Nenhum jogador disponível no mercado.")
-    st.stop()
+# 🔎 Filtros
+st.markdown("### 🔍 Filtros")
+col1, col2, col3 = st.columns(3)
+with col1:
+    filtro_nome = st.text_input("Nome do jogador").strip().lower()
+with col2:
+    filtro_posicao = st.selectbox("Posição", ["Todas", "GL", "LD", "ZAG", "LE", "VOL", "MC", "MD", "ME", "PD", "PE", "SA", "CA"])
+with col3:
+    filtro_valor = st.slider("Valor máximo (R$)", 0, 300_000_000, 300_000_000, step=1_000_000)
 
-# 📋 Exibição estilo planilha
-st.markdown("### Jogadores disponíveis")
-for jogador in jogadores:
-    col1, col2, col3, col4, col5 = st.columns([1.2, 3, 1.2, 2, 1.5])
+# 🔢 Paginação
+if "pagina_mercado" not in st.session_state:
+    st.session_state["pagina_mercado"] = 1
 
-    with col1:
-        st.markdown(f"**{jogador.get('posição', '-')[:3]}**")
-    with col2:
-        st.markdown(f"**{jogador.get('nome', '-')}**")
-    with col3:
-        st.markdown(f"⭐ {jogador.get('overall', 0)}")
-    with col4:
-        valor_formatado = f"R$ {jogador.get('valor', 0):,.0f}".replace(",", ".")
-        st.markdown(f"💰 {valor_formatado}")
-    with col5:
-        if st.button("Comprar", key=f"comprar_{jogador['id']}"):
-            valor = jogador["valor"]
+col_pag1, col_pag2, col_pag3 = st.columns([1, 1, 5])
+with col_pag1:
+    if st.button(⬅️ Anterior", disabled=st.session_state["pagina_mercado"] <= 1):
+        st.session_state["pagina_mercado"] -= 1
+with col_pag2:
+    if st.button("➡️ Próxima"):
+        st.session_state["pagina_mercado"] += 1
 
-            time_ref = db.collection("times").document(id_time)
-            dados_time = time_ref.get().to_dict()
-            saldo_atual = dados_time.get("saldo", 0)
+# 📦 Busca jogadores do mercado
+mercado_ref = db.collection("mercado_transferencias").stream()
+todos_jogadores = []
+for doc in mercado_ref:
+    j = doc.to_dict()
+    j["id_doc"] = doc.id
+    if j.get("nome") and j.get("valor") is not None:
+        todos_jogadores.append(j)
 
-            if saldo_atual < valor:
-                st.error("❌ Saldo insuficiente para realizar a compra.")
-                st.stop()
+# 🎯 Aplica filtros
+jogadores_filtrados = []
+for j in todos_jogadores:
+    if filtro_nome and filtro_nome not in j["nome"].lower():
+        continue
+    if filtro_posicao != "Todas" and j.get("posicao") != filtro_posicao:
+        continue
+    if j.get("valor", 0) > filtro_valor:
+        continue
+    jogadores_filtrados.append(j)
 
-            # Atualiza saldo do time
-            novo_saldo = saldo_atual - valor
-            time_ref.update({"saldo": novo_saldo})
+# 📄 Paginação
+por_pagina = 20
+total_paginas = max(1, (len(jogadores_filtrados) + por_pagina - 1) // por_pagina)
+pagina = st.session_state["pagina_mercado"]
+pagina = max(1, min(pagina, total_paginas))
+inicio = (pagina - 1) * por_pagina
+fim = inicio + por_pagina
+jogadores_exibidos = jogadores_filtrados[inicio:fim]
 
-            # Adiciona jogador ao elenco do time
-            db.collection("times").document(id_time).collection("elenco").add({
-                "nome": jogador["nome"],
-                "posição": jogador["posição"],
-                "overall": jogador["overall"],
-                "valor": jogador["valor"]
-            })
+st.markdown(f"#### Mostrando página {pagina} de {total_paginas} | Total de jogadores: {len(jogadores_filtrados)}")
 
-            # Remove jogador do mercado
-            db.collection("mercado_transferencias").document(jogador["id"]).delete()
+# 📝 Exibição
+if not jogadores_exibidos:
+    st.info("Nenhum jogador disponível com os filtros selecionados.")
+else:
+    for j in jogadores_exibidos:
+        col1, col2, col3, col4, col5, col6 = st.columns([2, 2, 1, 2, 1, 1])
+        with col1:
+            st.write(j["nome"])
+        with col2:
+            st.write(j.get("posicao", "Desconhecida"))
+        with col3:
+            st.write(j.get("overall", "N/A"))
+        with col4:
+            st.write(f"R$ {j['valor']:,.0f}".replace(",", "."))
+        with col5:
+            if st.button("🛒", key=f"comprar_{j['id_doc']}"):
+                if saldo_time < j["valor"]:
+                    st.error("❌ Saldo insuficiente.")
+                else:
+                    try:
+                        db.collection("mercado_transferencias").document(j["id_doc"]).delete()
+                        db.collection("times").document(id_time).collection("elenco").add({
+                            "nome": j["nome"],
+                            "posicao": j.get("posicao", "Desconhecida"),
+                            "overall": j.get("overall", 0),
+                            "valor": j["valor"]
+                        })
+                        db.collection("times").document(id_time).update({"saldo": saldo_time - j["valor"]})
+                        registrar_movimentacao(db, id_time, j["nome"], "Compra", "Mercado", j["valor"])
+                        st.success(f"✅ {j['nome']} comprado com sucesso!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Erro na compra: {e}")
+        with col6:
+            if eh_admin:
+                if st.button("🗑️", key=f"excluir_{j['id_doc']}"):
+                    try:
+                        db.collection("mercado_transferencias").document(j["id_doc"]).delete()
+                        st.success(f"{j['nome']} removido do mercado.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Erro ao excluir: {e}")
 
-            st.success(f"{jogador['nome']} comprado com sucesso!")
-            st.rerun()
+# 📜 Histórico de transferências
+with st.expander("📜 Ver histórico de transferências"):
+    mov_ref = db.collection("times").document(id_time).collection("movimentacoes").order_by("timestamp", direction=gc_firestore.Query.DESCENDING).stream()
+    historico = [{"tipo": doc.to_dict().get("tipo"), "jogador": doc.to_dict().get("jogador"), "valor": doc.to_dict().get("valor")} for doc in mov_ref]
+
+    if not historico:
+        st.info("Nenhuma movimentação registrada.")
+    else:
+        df_hist = pd.DataFrame(historico)
+        df_hist["valor"] = df_hist["valor"].apply(lambda x: f"R$ {x:,.0f}".replace(",", ".")) if not df_hist.empty else "-"
+        df_hist.columns = ["Tipo", "Jogador", "Valor"]
+        st.dataframe(df_hist, use_container_width=True)
