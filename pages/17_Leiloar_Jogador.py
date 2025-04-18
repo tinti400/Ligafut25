@@ -46,6 +46,10 @@ with st.form("form_leiloar"):
         options=elenco,
         format_func=lambda x: f"{x.get('nome', 'Desconhecido')} ({x.get('posição', 'Sem posição')})"
     )
+    
+    valor_base = jogador_escolhido.get("valor", 0)
+    valor_minimo = st.number_input("💰 Lance mínimo inicial (R$)", min_value=100_000, value=valor_base, step=100_000)
+    
     duracao = st.slider("⏱️ Duração do leilão (minutos)", min_value=1, max_value=10, value=2)
     botao_leiloar = st.form_submit_button("🚀 Iniciar Leilão")
 
@@ -59,10 +63,10 @@ if botao_leiloar and jogador_escolhido:
                 "nome": jogador_escolhido.get("nome", ""),
                 "posição": jogador_escolhido.get("posição", "Sem posição"),
                 "overall": jogador_escolhido.get("overall", 0),
-                "valor": jogador_escolhido.get("valor", 0)
+                "valor": valor_minimo
             },
-            "valor_atual": jogador_escolhido.get("valor", 0),
-            "valor_inicial": jogador_escolhido.get("valor", 0),
+            "valor_atual": valor_minimo,
+            "valor_inicial": valor_minimo,
             "time_vencedor": "",
             "id_time_atual": id_time,
             "ativo": True,
