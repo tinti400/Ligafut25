@@ -2,7 +2,7 @@ import streamlit as st
 from google.oauth2 import service_account
 from google.cloud import firestore
 from utils import verificar_login
-import datetime
+from datetime import datetime, timedelta
 
 # Configuração da página
 st.set_page_config(page_title="Leilão - LigaFut", layout="wide")
@@ -38,13 +38,23 @@ fim = leilao.get("fim")
 id_time_usuario = st.session_state.get("id_time", "")
 
 # Converte fim para datetime
-if hasattr(fim, 'to_datetime'):
-    fim = fim.to_datetime()
+try:
+    if hasattr(fim, 'to_datetime'):
+        fim = fim.to_datetime()
+    elif isinstance(fim, str):
+        fim = datetime.fromisoformat(fim)
+except:
+    st.error("Erro ao converter o campo 'fim' do leilão.")
+    st.stop()
 
 # Cronômetro regressivo
-tempo_restante = (fim - datetime.datetime.now()).total_seconds()
-tempo_restante = max(0, int(tempo_restante))
-minutos, segundos = divmod(tempo_restante, 60)
+try:
+    tempo_restante = (fim - datetime.now()).total_seconds()
+    tempo_restante = max(0, int(tempo_restante))
+    minutos, segundos = divmod(tempo_restante, 60)
+except Exception as e:
+    st.error(f"Erro ao calcular o cronômetro: {e}")
+    st.stop()
 
 st.markdown(f"<h2 style='text-align:center'>⏳ Tempo restante: {minutos:02d}:{segundos:02d}</h2>", unsafe_allow_html=True)
 st.markdown("---")
@@ -73,10 +83,10 @@ if tempo_restante > 0:
             if novo_lance > saldo:
                 st.error("❌ Saldo insuficiente.")
             else:
-                agora = datetime.datetime.now()
+                agora = datetime.now()
                 novo_fim = fim
                 if (fim - agora).total_seconds() <= 15:
-                    novo_fim = agora + datetime.timedelta(seconds=15)
+                    novo_fim = agora + timedelta(seconds=15)
 
                 doc_ref.update({
                     "valor_atual": novo_lance,
@@ -90,4 +100,3 @@ if tempo_restante > 0:
             st.error(f"Erro ao registrar lance: {e}")
 else:
     st.info("⏱️ O tempo do leilão acabou.")
-
