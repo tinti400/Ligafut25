@@ -1,8 +1,8 @@
 import streamlit as st
 from google.oauth2 import service_account
 import google.cloud.firestore as gc_firestore
+from datetime import datetime, timedelta
 from utils import verificar_login
-from datetime import datetime
 
 st.set_page_config(page_title="Leilão - LigaFut", layout="wide")
 
@@ -18,15 +18,15 @@ if "firebase" not in st.session_state:
 else:
     db = st.session_state["firebase"]
 
-# ✅ Verifica login
+# Verifica login
 verificar_login()
 
-# 📄 Buscar leilão ativo
+# Busca leilão ativo
 doc_ref = db.collection("configuracoes").document("leilao_sistema")
 doc = doc_ref.get()
 
 if not doc.exists or not doc.to_dict().get("ativo", False):
-    st.warning("Nenhum leilão ativo no momento.")
+    st.warning("⚠️ Nenhum leilão ativo no momento.")
     st.stop()
 
 leilao = doc.to_dict()
@@ -36,26 +36,28 @@ time_vencedor = leilao.get("time_vencedor", "")
 fim = leilao.get("fim")
 id_time_usuario = st.session_state.get("id_time", "")
 
-# 🕒 Conversão do fim para datetime
-if hasattr(fim, 'timestamp'):
+# Converte fim para datetime sem timezone
+if hasattr(fim, 'to_datetime'):
     fim = fim.to_datetime()
+if fim.tzinfo is not None:
+    fim = fim.replace(tzinfo=None)
 
-# ⏳ Cronômetro regressivo
+# Cronômetro regressivo
 try:
-    tempo_restante = (fim - datetime.utcnow()).total_seconds()
+    tempo_restante = (fim - datetime.now()).total_seconds()
     tempo_restante = max(0, int(tempo_restante))
     minutos, segundos = divmod(tempo_restante, 60)
     st.markdown(f"<h2 style='text-align:center'>⏳ Tempo restante: {minutos:02d}:{segundos:02d}</h2>", unsafe_allow_html=True)
 except Exception as e:
-    st.error(f"Erro ao calcular tempo: {e}")
-    tempo_restante = 0
+    st.error(f"Erro ao calcular o cronômetro: {e}")
+    st.stop()
 
 st.markdown("---")
 
-# 📋 Exibição do jogador
+# Exibição do jogador
 col1, col2, col3, col4 = st.columns([2, 4, 2, 2])
 with col1:
-    st.subheader(jogador.get("posicao", ""))
+    st.subheader(jogador.get("posição", ""))
 with col2:
     st.subheader(jogador.get("nome", ""))
 with col3:
@@ -65,7 +67,7 @@ with col4:
 
 st.markdown("---")
 
-# 💸 Fazer lance
+# Lances
 if tempo_restante > 0:
     novo_lance = st.number_input("💸 Seu lance (mínimo: R$100.000 acima)", min_value=valor_atual + 100_000, step=100_000)
     if st.button("💥 Fazer Lance"):
@@ -76,7 +78,7 @@ if tempo_restante > 0:
             if novo_lance > saldo:
                 st.error("❌ Saldo insuficiente.")
             else:
-                agora = datetime.utcnow()
+                agora = datetime.now()
                 novo_fim = fim
                 if (fim - agora).total_seconds() <= 15:
                     novo_fim = agora + timedelta(seconds=15)
