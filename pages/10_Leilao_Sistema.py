@@ -2,7 +2,7 @@ import streamlit as st
 from google.oauth2 import service_account
 import google.cloud.firestore as gc_firestore
 from datetime import datetime, timedelta
-from utils import verificar_login
+from utils import verificar_login, registrar_movimentacao
 
 st.set_page_config(page_title="Leilão - LigaFut", layout="wide")
 
@@ -18,7 +18,6 @@ if "firebase" not in st.session_state:
 else:
     db = st.session_state["firebase"]
 
-# Verifica login
 verificar_login()
 
 # Busca leilão ativo
@@ -32,7 +31,7 @@ if not doc.exists or not doc.to_dict().get("ativo", False):
 leilao = doc.to_dict()
 jogador = leilao.get("jogador", {})
 valor_atual = leilao.get("valor_atual", 0)
-time_vencedor = leilao.get("time_vencedor", "")
+id_time_vencedor = leilao.get("time_vencedor", "")
 fim = leilao.get("fim")
 id_time_usuario = st.session_state.get("id_time", "")
 
@@ -42,7 +41,7 @@ if hasattr(fim, 'to_datetime'):
 if fim.tzinfo is not None:
     fim = fim.replace(tzinfo=None)
 
-# Cronômetro regressivo
+# Cronômetro
 try:
     tempo_restante = (fim - datetime.now()).total_seconds()
     tempo_restante = max(0, int(tempo_restante))
@@ -54,10 +53,16 @@ except Exception as e:
 
 st.markdown("---")
 
+# Busca nome do time vencedor
+nome_time_vencedor = ""
+if id_time_vencedor:
+    time_vencedor_ref = db.collection("times").document(id_time_vencedor).get()
+    nome_time_vencedor = time_vencedor_ref.to_dict().get("nome", "Desconhecido")
+
 # Exibição do jogador
 col1, col2, col3, col4 = st.columns([2, 4, 2, 2])
 with col1:
-    st.subheader(jogador.get("posição", ""))
+    st.subheader(jogador.get("posicao", ""))
 with col2:
     st.subheader(jogador.get("nome", ""))
 with col3:
@@ -65,7 +70,33 @@ with col3:
 with col4:
     st.metric("💰 Lance Atual", f"R$ {valor_atual:,.0f}".replace(",", "."))
 
+if nome_time_vencedor:
+    st.info(f"🏷️ Último Lance: {nome_time_vencedor}")
+
 st.markdown("---")
+
+# Finaliza leilão e move jogador para elenco
+if tempo_restante == 0 and id_time_vencedor and jogador:
+    try:
+        elenco_ref = db.collection("times").document(id_time_vencedor).collection("elenco")
+        elenco_ref.add(jogador)
+
+        # Debita valor
+        time_doc = db.collection("times").document(id_time_vencedor)
+        saldo_atual = time_doc.get().to_dict().get("saldo", 0)
+        novo_saldo = saldo_atual - valor_atual
+        time_doc.update({"saldo": novo_saldo})
+
+        # Registra movimentação
+        registrar_movimentacao(id_time_vencedor, jogador.get("nome", ""), "Leilão", "Compra", valor_atual)
+
+        # Finaliza leilão
+        doc_ref.update({"ativo": False})
+        st.success("✅ Leilão encerrado! Jogador transferido com sucesso.")
+        st.stop()
+    except Exception as e:
+        st.error(f"Erro ao finalizar o leilão: {e}")
+        st.stop()
 
 # Lances
 if tempo_restante > 0:
@@ -95,3 +126,4 @@ if tempo_restante > 0:
             st.error(f"Erro ao registrar lance: {e}")
 else:
     st.info("⏱️ O tempo do leilão acabou.")
+
