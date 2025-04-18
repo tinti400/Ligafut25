@@ -38,11 +38,7 @@ evento = evento_doc.to_dict() if evento_doc.exists else {}
 
 ativo = evento.get("ativo", False)
 inicio_ts = evento.get("inicio")
-
-if inicio_ts and hasattr(inicio_ts, "to_datetime"):
-    inicio = inicio_ts.to_datetime().replace(tzinfo=None)
-else:
-    inicio = None
+inicio = inicio_ts.to_datetime().replace(tzinfo=None) if inicio_ts else None
 
 # ---------------------- ADMIN ----------------------
 if eh_admin:
@@ -81,7 +77,7 @@ if eh_admin:
 # ---------------------- STATUS ----------------------
 st.markdown("---")
 if ativo:
-    fase = evento.get("fase")
+    fase = evento.get("fase", "bloqueio")
     ordem = evento.get("ordem", [])
     vez = evento.get("vez", 0)
     concluidos = evento.get("concluidos", [])
@@ -118,7 +114,7 @@ if ativo:
     elif fase == "acao":
         st.subheader("🎯 Ordem e Vez Atual")
         for i, tid in enumerate(ordem):
-            nome = db.collection("times").document(tid).get().to_dict().get("nome")
+            nome = db.collection("times").document(tid).get().to_dict().get("nome", "Desconhecido")
             if tid in concluidos:
                 st.markdown(f"🟢 {nome}")
             elif i == vez:
@@ -131,6 +127,7 @@ if ativo:
             if id_time == id_vez:
                 st.success("É sua vez! Escolha jogadores para pagar a multa.")
                 st.markdown("Escolha um time adversário:")
+
                 times_ref = db.collection("times").stream()
                 for tdoc in times_ref:
                     tid = tdoc.id
@@ -149,7 +146,6 @@ if ativo:
                                 st.markdown(f"🔒 {j['nome']} - {j['posicao']} (R$ {j['valor']:,.0f})")
                             else:
                                 if st.button(f"Pagar multa por {j['nome']} (R$ {j['valor']:,.0f})", key=f"{tid}_{j['nome']}"):
-                                    # Transferência apenas no final, salva temporariamente
                                     novo = roubos.get(id_time, [])
                                     novo.append({"nome": j['nome'], "posicao": j['posicao'], "valor": j['valor'], "de": tid})
                                     roubos[id_time] = novo
@@ -173,11 +169,11 @@ if ativo:
     if evento.get("finalizado"):
         st.success("✅ Evento finalizado. Veja o resumo:")
         for tid, acoes in roubos.items():
-            nome_t = db.collection("times").document(tid).get().to_dict().get("nome")
+            nome_t = db.collection("times").document(tid).get().to_dict().get("nome", "Desconhecido")
             st.markdown(f"### 🟦 {nome_t} comprou por multa:")
             for j in acoes:
-                st.markdown(f"- {j['nome']} ({j['posicao']}) do time {db.collection('times').document(j['de']).get().to_dict().get('nome')}")
-                # Faz a transferência agora
+                nome_vendido = db.collection("times").document(j['de']).get().to_dict().get("nome", "")
+                st.markdown(f"- {j['nome']} ({j['posicao']}) do time {nome_vendido}")
                 try:
                     db.collection("times").document(j['de']).collection("elenco").where("nome", "==", j['nome']).get()[0].reference.delete()
                     db.collection("times").document(tid).collection("elenco").add(j)
@@ -188,6 +184,6 @@ if ativo:
                     registrar_movimentacao(db, tid, j['nome'], "Multa", "Compra", j['valor'])
                 except Exception as e:
                     st.error(f"Erro ao transferir {j['nome']}: {e}")
-
 else:
     st.warning("🔒 Evento de multa não está ativo.")
+
