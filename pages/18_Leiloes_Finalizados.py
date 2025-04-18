@@ -1,46 +1,52 @@
 import streamlit as st
-import firebase_admin
-from firebase_admin import credentials, firestore
+from google.oauth2 import service_account
+from google.cloud import firestore
+from utils import verificar_login
 from datetime import datetime
 
 st.set_page_config(page_title="Leilões Finalizados", layout="wide")
 
-# Inicializar Firebase
-if not firebase_admin._apps:
-    cred = credentials.Certificate("credenciais.json")
-    firebase_admin.initialize_app(cred)
+# 🔐 Inicializa Firebase com st.secrets
+if "firebase" not in st.session_state:
+    try:
+        cred = service_account.Credentials.from_service_account_info(st.secrets["firebase"])
+        db = firestore.Client(credentials=cred, project=st.secrets["firebase"]["project_id"])
+        st.session_state["firebase"] = db
+    except Exception as e:
+        st.error(f"Erro ao conectar ao Firebase: {e}")
+        st.stop()
+else:
+    db = st.session_state["firebase"]
 
-db = firestore.client()
+# ✅ Verifica login
+verificar_login()
 
 st.title("📜 Leilões Finalizados")
 
-# Buscar todos os leilões encerrados
-leiloes_ref = db.collection("leiloes_livres").where("ativo", "==", False).stream()
+# 🔎 Buscar todos os leilões finalizados (inativos)
+leiloes_ref = db.collection("leiloes_finalizados").order_by("fim", direction=firestore.Query.DESCENDING).stream()
+
 leiloes = [doc.to_dict() for doc in leiloes_ref]
 
-# Ordenar por data mais recente
-leiloes.sort(key=lambda x: x.get("fim", datetime.min), reverse=True)
-
 if not leiloes:
-    st.info("Nenhum leilão finalizado ainda.")
+    st.info("Nenhum leilão finalizado até o momento.")
 else:
-    st.markdown("### 📋 Histórico de Leilões")
     for leilao in leiloes:
         jogador = leilao.get("jogador", {})
-        valor_final = leilao.get("valor_atual", jogador.get("valor", 0))
-        time_vendedor = leilao.get("nome_time_vendedor", "Desconhecido")
-        time_comprador = leilao.get("id_time_vencedor", "Comprador")
+        nome_jogador = jogador.get("nome", "Desconhecido")
+        posicao = jogador.get("posição", "-")
+        overall = jogador.get("overall", "N/A")
+        valor = leilao.get("valor_atual", 0)
+        time_vencedor = leilao.get("time_vencedor", "Sem vencedor")
+        fim = leilao.get("fim")
 
-        col1, col2, col3, col4, col5, col6 = st.columns([1, 3, 1, 2, 3, 3])
-        with col1:
-            st.write(f"**{jogador.get('posicao', '')}**")
-        with col2:
-            st.write(jogador.get("nome", ""))
-        with col3:
-            st.write(jogador.get("overall", ""))
-        with col4:
-            st.write(f"R$ {valor_final:,.0f}")
-        with col5:
-            st.write(f"👤 {time_vendedor}")
-        with col6:
-            st.write(f"🤝 {time_comprador}")
+        if isinstance(fim, datetime):
+            fim_str = fim.strftime("%d/%m/%Y %H:%M")
+        else:
+            fim_str = "Data desconhecida"
+
+        st.markdown("---")
+        st.markdown(f"**🎯 Jogador:** {nome_jogador} ({posicao}) - ⭐ {overall}")
+        st.markdown(f"**💰 Valor Final:** R$ {valor:,.0f}".replace(",", "."))
+        st.markdown(f"**🏆 Time Vencedor:** {time_vencedor}")
+        st.markdown(f"**🕒 Finalizado em:** {fim_str}")
