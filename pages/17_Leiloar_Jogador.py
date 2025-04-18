@@ -47,7 +47,7 @@ with st.form("form_leiloar"):
         format_func=lambda x: f"{x.get('nome', 'Desconhecido')} ({x.get('posição', 'Sem posição')})"
     )
 
-    valor_base = jogador_escolhido.get("valor", 100000)
+    valor_base = max(jogador_escolhido.get("valor", 100000), 100000)
     valor_minimo = st.number_input("💰 Lance mínimo inicial (R$)", min_value=100000, value=valor_base, step=50000)
     duracao = st.slider("⏱️ Duração do leilão (minutos)", min_value=1, max_value=10, value=2)
 
