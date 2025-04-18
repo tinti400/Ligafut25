@@ -64,7 +64,7 @@ for time_id, time_nome in times.items():
                 with col3:
                     st.markdown(f"**Overall:** {overall}")
                 with col4:
-                    st.markdown(f"**Valor:** R$ {valor:,.0f}".replace(",", "."))
+                    st.markdown(f"**Valor:** R$ {valor:,.0f}")
 
                 tipo_proposta = st.selectbox(
                     "Tipo de Proposta:",
@@ -89,7 +89,6 @@ for time_id, time_nome in times.items():
                 if tipo_proposta in ["Somente Dinheiro", "Troca + Dinheiro"]:
                     valor_adicional = st.number_input(
                         "💰 Valor em dinheiro (R$)",
-                        min_value=1_000_000,
                         step=500_000,
                         value=valor,
                         key=f"valor_dinheiro_{id_jogador}"
@@ -114,3 +113,4 @@ for time_id, time_nome in times.items():
                         db.collection("negociacoes").add(proposta_data)
                         st.success("Proposta enviada com sucesso!")
                         st.rerun()
+
