@@ -64,7 +64,7 @@ for time_id, time_nome in times.items():
                 with col3:
                     st.markdown(f"**Overall:** {overall}")
                 with col4:
-                    st.markdown(f"**Valor:** R$ {valor:,.0f}")
+                    st.markdown(f"**Valor:** R$ {valor:,.0f}".replace(",", "."))
 
                 tipo_proposta = st.selectbox(
                     "Tipo de Proposta:",
