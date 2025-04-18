@@ -25,7 +25,7 @@ id_usuario = st.session_state["usuario_id"]
 id_time = st.session_state["id_time"]
 nome_time = st.session_state["nome_time"]
 
-st.title("\ud83d\udea8 Evento de Multa - LigaFut")
+st.title("🚨 Evento de Multa - LigaFut")
 
 # Verifica se é admin
 admin_ref = db.collection("admins").document(id_usuario).get()
@@ -47,11 +47,11 @@ elif hasattr(inicio_ts, "to_datetime"):
 else:
     inicio = None
 
-# ADMIN - iniciar/encerrar evento
+# ---------------------- ADMIN ----------------------
 if eh_admin:
-    st.markdown("### \ud83d\udc51 Painel do Administrador")
+    st.markdown("### 👑 Painel do Administrador")
     if not ativo:
-        if st.button("\ud83d\ude80 Iniciar Evento de Multa"):
+        if st.button("🚀 Iniciar Evento de Multa"):
             try:
                 times_ref = db.collection("times").stream()
                 ordem = [doc.id for doc in times_ref]
@@ -73,7 +73,7 @@ if eh_admin:
             except Exception as e:
                 st.error(f"Erro ao iniciar evento: {e}")
     else:
-        if st.button("\ud83d\uded1 Encerrar Evento"):
+        if st.button("🛑 Encerrar Evento"):
             try:
                 evento_ref.update({"ativo": False, "finalizado": True})
                 st.success("Evento encerrado.")
@@ -81,7 +81,7 @@ if eh_admin:
             except Exception as e:
                 st.error(f"Erro ao encerrar: {e}")
 
-# STATUS
+# ---------------------- STATUS ----------------------
 st.markdown("---")
 if ativo:
     fase = evento.get("fase", "bloqueio")
@@ -96,61 +96,76 @@ if ativo:
 
     # FASE 1 - BLOQUEIO
     if fase == "bloqueio":
-        st.subheader("\u26d4 Bloqueie até 4 jogadores do seu elenco")
+        st.subheader("⛔ Bloqueie até 4 jogadores do seu elenco")
         elenco_ref = db.collection("times").document(id_time).collection("elenco").stream()
         elenco = [doc.to_dict() | {"id": doc.id} for doc in elenco_ref]
 
         bloqueados = bloqueios.get(id_time, [])
-        nomes_bloqueados = [f"{j.get('nome')} - {j.get('posicao', 'Sem posição')}" for j in bloqueados]
-        opcoes = [f"{j['nome']} - {j.get('posicao', 'Sem posição')}" for j in elenco]
+        nomes_bloqueados_formatados = [f"{j['nome']} - {j['posicao']}" for j in bloqueados]
+        opcoes = [f"{j['nome']} - {j['posicao']}" for j in elenco]
 
-        escolhidos = st.multiselect("Jogadores para bloquear:", options=opcoes, default=nomes_bloqueados, max_selections=4)
-        if st.button("\ud83d\udd12 Salvar bloqueios"):
-            novos = [j for j in elenco if f"{j['nome']} - {j.get('posicao', 'Sem posição')}" in escolhidos]
+        escolhidos = st.multiselect(
+            "Jogadores para bloquear:",
+            opcoes,
+            default=nomes_bloqueados_formatados,
+            max_selections=4
+        )
+
+        if st.button("🔒 Salvar bloqueios"):
+            novos = [j for j in elenco if f"{j['nome']} - {j['posicao']}" in escolhidos]
             bloqueios[id_time] = novos
             evento_ref.update({"bloqueios": bloqueios})
             st.success("Bloqueios salvos.")
             st.rerun()
 
-        if eh_admin and st.button("\u27a1\ufe0f Avançar para Ação"):
+        if eh_admin and st.button("➡️ Avançar para Ação"):
             evento_ref.update({"fase": "acao"})
             st.success("Avançou para fase de ação.")
             st.rerun()
 
     # FASE 2 - AÇÃO
     elif fase == "acao":
-        st.subheader("\ud83c\udfaf Ordem e Vez Atual")
+        st.subheader("🎯 Ordem e Vez Atual")
         for i, tid in enumerate(ordem):
             nome = db.collection("times").document(tid).get().to_dict().get("nome", "Desconhecido")
             if tid in concluidos:
-                st.markdown(f"\ud83d\udfe2 {nome}")
+                st.markdown(f"🟢 {nome}")
             elif i == vez:
-                st.markdown(f"\ud83d\udfe1 {nome} (vez atual)")
+                st.markdown(f"🟡 {nome} (vez atual)")
             else:
-                st.markdown(f"\u26aa {nome}")
+                st.markdown(f"⚪ {nome}")
 
         if vez < len(ordem):
             id_vez = ordem[vez]
             if id_time == id_vez:
                 st.success("É sua vez! Escolha jogadores para pagar a multa.")
+                st.markdown("Escolha um time adversário:")
+
                 times_ref = db.collection("times").stream()
                 for tdoc in times_ref:
                     tid = tdoc.id
-                    if tid == id_time or ja_perderam.get(tid, 0) >= 4:
+                    if tid == id_time:
+                        continue
+                    if ja_perderam.get(tid, 0) >= 4:
                         continue
 
                     nome_t = tdoc.to_dict().get("nome", "Desconhecido")
-                    with st.expander(f"\ud83d\udcc2 {nome_t}"):
+                    with st.expander(f"📂 {nome_t}"):
                         elenco = db.collection("times").document(tid).collection("elenco").stream()
                         for jogador in elenco:
                             j = jogador.to_dict()
                             bloqueado = any(j['nome'] == b['nome'] for b in bloqueios.get(tid, []))
                             if bloqueado:
-                                st.markdown(f"\ud83d\udd12 {j['nome']} - {j.get('posicao', '')} (R$ {j['valor']:,.0f})")
+                                st.markdown(f"🔒 {j['nome']} - {j['posicao']} (R$ {j['valor']:,.0f})")
                             else:
                                 if st.button(f"Pagar multa por {j['nome']} (R$ {j['valor']:,.0f})", key=f"{tid}_{j['nome']}"):
                                     novo = roubos.get(id_time, [])
-                                    novo.append({"nome": j['nome'], "posicao": j.get("posicao", ""), "valor": j['valor'], "de": tid})
+                                    novo.append({
+                                        "nome": j['nome'],
+                                        "posicao": j['posicao'],
+                                        "valor": j['valor'],
+                                        "de": tid
+                                    })
                                     roubos[id_time] = novo
                                     ja_perderam[tid] = ja_perderam.get(tid, 0) + 1
                                     evento_ref.update({"roubos": roubos, "ja_perderam": ja_perderam})
@@ -159,21 +174,21 @@ if ativo:
 
                 if len(roubos.get(id_time, [])) >= 5:
                     st.info("Você já fez as 5 multas permitidas.")
-                if st.button("\u2705 Finalizar minha vez"):
+                if st.button("✅ Finalizar minha vez"):
                     concluidos.append(id_time)
                     evento_ref.update({"concluidos": concluidos, "vez": vez + 1})
                     st.rerun()
             elif eh_admin:
-                if st.button("\u23e9 Pular vez do time atual"):
+                if st.button("⏭️ Pular vez do time atual"):
                     evento_ref.update({"vez": vez + 1})
                     st.rerun()
 
     # FASE 3 - FINALIZADO
     if evento.get("finalizado"):
-        st.success("\u2705 Evento finalizado. Veja o resumo:")
+        st.success("✅ Evento finalizado. Veja o resumo:")
         for tid, acoes in roubos.items():
             nome_t = db.collection("times").document(tid).get().to_dict().get("nome", "Desconhecido")
-            st.markdown(f"### \ud83d\udd3e {nome_t} comprou por multa:")
+            st.markdown(f"### 🟦 {nome_t} comprou por multa:")
             for j in acoes:
                 nome_vendido = db.collection("times").document(j['de']).get().to_dict().get("nome", "")
                 st.markdown(f"- {j['nome']} ({j['posicao']}) do time {nome_vendido}")
@@ -187,5 +202,6 @@ if ativo:
                     registrar_movimentacao(db, tid, j['nome'], "Multa", "Compra", j['valor'])
                 except Exception as e:
                     st.error(f"Erro ao transferir {j['nome']}: {e}")
+
 else:
-    st.warning("\ud83d\udd10 Evento de multa não está ativo.")
+    st.warning("🔒 Evento de multa não está ativo.")
