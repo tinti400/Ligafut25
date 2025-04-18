@@ -3,7 +3,7 @@ from google.oauth2 import service_account
 from google.cloud import firestore
 from utils import verificar_login
 
-st.set_page_config(page_title="Administração de Usuários - LigaFut", layout="wide")
+st.set_page_config(page_title="Admin Usuários - LigaFut", layout="centered")
 
 # Inicializa Firebase
 if "firebase" not in st.session_state:
@@ -17,28 +17,32 @@ if "firebase" not in st.session_state:
 else:
     db = st.session_state["firebase"]
 
+# Verifica login
 verificar_login()
 
-usuario_id = st.session_state["usuario_id"]
-email = st.session_state["usuario_logado"]
+usuario_logado = st.session_state.get("usuario_logado", "")
+usuario_id = st.session_state.get("usuario_id", "")
 
-st.title("👤 Painel de Administração de Usuários")
-st.markdown(f"**Usuário logado:** `{email}`")
-
-st.markdown("---")
-
-# Verifica se já é admin
+# Verifica se o usuário logado é admin
 admin_doc = db.collection("admins").document(usuario_id).get()
+eh_admin = admin_doc.exists
 
-if admin_doc.exists:
-    st.success("✅ Você já é administrador do sistema.")
+st.title("👥 Gerenciar Administradores")
+
+if eh_admin:
+    st.success(f"Você está logado como ADMIN: `{usuario_logado}`")
+
+    st.markdown("### ➕ Adicionar novo administrador")
+    novo_email = st.text_input("E-mail do usuário a ser promovido")
+
+    if st.button("✅ Tornar administrador"):
+        if novo_email:
+            try:
+                db.collection("admins").document(novo_email).set({"email": novo_email})
+                st.success(f"Usuário `{novo_email}` agora é um administrador!")
+            except Exception as e:
+                st.error(f"Erro ao adicionar administrador: {e}")
+        else:
+            st.warning("Informe um e-mail válido.")
 else:
-    if st.button("🔐 Tornar-se Administrador"):
-        try:
-            db.collection("admins").document(usuario_id).set({
-                "email": email
-            })
-            st.success("Agora você é um administrador! Reinicie a página ou acesse o painel de admin.")
-        except Exception as e:
-            st.error(f"Erro ao registrar como admin: {e}")
-
+    st.error("❌ Você não tem permissão para acessar esta página. Apenas administradores.")
