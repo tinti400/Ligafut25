@@ -1,21 +1,3 @@
-import streamlit as st
-from google.oauth2 import service_account
-import google.cloud.firestore as gc_firestore
-
-st.set_page_config(page_title="LigaFut", layout="wide")
-
-# 🔐 Firebase via st.secrets
-if "firebase" not in st.session_state:
-    try:
-        cred = service_account.Credentials.from_service_account_info(st.secrets["firebase"])
-        db = gc_firestore.Client(credentials=cred, project=st.secrets["firebase"]["project_id"])
-        st.session_state["firebase"] = db
-    except Exception as e:
-        st.error("Erro ao conectar com o Firebase.")
-        st.stop()
-else:
-    db = st.session_state["firebase"]
-
 # 🧠 Verifica login
 if "usuario_id" not in st.session_state or not st.session_state["usuario_id"]:
     st.warning("Você precisa estar logado para acessar o sistema.")
@@ -23,7 +5,7 @@ if "usuario_id" not in st.session_state or not st.session_state["usuario_id"]:
 
 id_usuario = st.session_state["usuario_id"]
 
-# 👑 Verifica se é admin
+# 👑 Verifica se é admin (ANTES de construir o menu)
 admin_ref = db.collection("admins").document(id_usuario).get()
 eh_admin = admin_ref.exists
 
@@ -56,3 +38,4 @@ if eh_admin:
 
 st.sidebar.markdown("---")
 st.sidebar.success(f"Logado como: {st.session_state.get('usuario', 'Desconhecido')}")
+
