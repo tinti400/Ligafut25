@@ -1,96 +1,67 @@
 import streamlit as st
 from google.oauth2 import service_account
 import google.cloud.firestore as gc_firestore
-import pandas as pd
 
-st.set_page_config(page_title="Classificação - LigaFut", layout="wide")
+st.set_page_config(page_title="Rodadas - LigaFut", layout="wide")
 
-# 🔐 Inicialização do Firestore via st.secrets
+# 🔐 Inicializa Firebase
 if "firebase" not in st.session_state:
     try:
         cred = service_account.Credentials.from_service_account_info(st.secrets["firebase"])
         db = gc_firestore.Client(credentials=cred, project=st.secrets["firebase"]["project_id"])
         st.session_state["firebase"] = db
     except Exception as e:
-        st.error(f"Erro ao conectar com o Firebase: {e}")
+        st.error(f"Erro ao conectar ao Firebase: {e}")
         st.stop()
 else:
     db = st.session_state["firebase"]
 
-st.markdown("<h1 style='text-align: center;'>📊 Tabela de Classificação</h1><hr>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align: center;'>🏟️ Resultados das Rodadas</h1><hr>", unsafe_allow_html=True)
 
-# 🔄 Recupera times
-try:
-    times_ref = db.collection("times").stream()
-    times = {doc.id: doc.to_dict().get("nome", "Sem Nome") for doc in times_ref}
-except Exception as e:
-    st.error(f"Erro ao buscar times: {e}")
-    st.stop()
+# 📋 Lista os times
+times_ref = db.collection("times").stream()
+times_dict = {doc.id: doc.to_dict().get("nome", "Sem Nome") for doc in times_ref}
 
-# 🧮 Inicializa dados da tabela
-tabela = {tid: {
-    "Time": nome,
-    "P": 0, "J": 0, "V": 0, "E": 0, "D": 0, "GP": 0, "GC": 0, "SG": 0
-} for tid, nome in times.items()}
+# 🔁 Lista e ordena as rodadas
+rodadas_ref = db.collection_group("rodadas_divisao_1").stream()
+rodadas = sorted(rodadas_ref, key=lambda r: r.to_dict().get("numero", 0))
 
-# 🔁 Processa rodadas e resultados
-try:
-    rodadas_ref = db.collection_group("rodadas_divisao_1").stream()
-    for doc in rodadas_ref:
-        rodada = doc.to_dict()
-        jogos = rodada.get("jogos", [])
-        for jogo in jogos:
-            mandante = jogo["mandante"]
-            visitante = jogo["visitante"]
-            gm = jogo.get("gols_mandante")
-            gv = jogo.get("gols_visitante")
+for rodada_doc in rodadas:
+    rodada_data = rodada_doc.to_dict()
+    numero_rodada = rodada_data.get("numero", "?")
+    jogos = rodada_data.get("jogos", [])
 
-            # Só contabiliza se os dois gols foram informados
-            if gm is not None and gv is not None:
-                for time_id in [mandante, visitante]:
-                    if time_id not in tabela:
-                        continue
-                    tabela[time_id]["J"] += 1
+    st.markdown(f"<h3 style='color:#444;'>📅 Rodada {numero_rodada}</h3>", unsafe_allow_html=True)
 
-                tabela[mandante]["GP"] += gm
-                tabela[mandante]["GC"] += gv
-                tabela[visitante]["GP"] += gv
-                tabela[visitante]["GC"] += gm
+    for idx, jogo in enumerate(jogos):
+        mandante_id = jogo.get("mandante")
+        visitante_id = jogo.get("visitante")
+        gols_mandante = jogo.get("gols_mandante", 0)
+        gols_visitante = jogo.get("gols_visitante", 0)
 
-                if gm > gv:
-                    tabela[mandante]["V"] += 1
-                    tabela[visitante]["D"] += 1
-                elif gv > gm:
-                    tabela[visitante]["V"] += 1
-                    tabela[mandante]["D"] += 1
-                else:
-                    tabela[mandante]["E"] += 1
-                    tabela[visitante]["E"] += 1
-except Exception as e:
-    st.error(f"Erro ao processar rodadas: {e}")
-    st.stop()
+        nome_mandante = times_dict.get(mandante_id, "Time A")
+        nome_visitante = times_dict.get(visitante_id, "Time B")
 
-# Calcula pontos e saldo de gols
-for t in tabela.values():
-    t["P"] = t["V"] * 3 + t["E"]
-    t["SG"] = t["GP"] - t["GC"]
+        col1, col2, col3, col4, col5 = st.columns([3, 1, 1, 1, 3])
+        with col1:
+            st.markdown(f"**{nome_mandante}**")
+        with col2:
+            gm = st.number_input(" ", min_value=0, step=1, value=gols_mandante, key=f"{rodada_doc.id}_{idx}_gm")
+        with col3:
+            st.markdown("**x**")
+        with col4:
+            gv = st.number_input("  ", min_value=0, step=1, value=gols_visitante, key=f"{rodada_doc.id}_{idx}_gv")
+        with col5:
+            st.markdown(f"**{nome_visitante}**")
 
-# 🔢 Converte para DataFrame
-df = pd.DataFrame(tabela.values())
-df = df.sort_values(by=["P", "SG", "GP"], ascending=False).reset_index(drop=True)
-df.index += 1
-
-# 🎨 Estiliza G4 e Z2
-def destaque_linha(row):
-    pos = row.name + 1
-    if pos <= 4:
-        return ["background-color: #d4edda"] * len(row)  # Verde (G4)
-    elif pos > len(df) - 2:
-        return ["background-color: #f8d7da"] * len(row)  # Vermelho (Z2)
-    else:
-        return [""] * len(row)
-
-st.dataframe(
-    df.style.apply(destaque_linha, axis=1),
-    use_container_width=True
-)
+        salvar_col = st.columns(5)[2]
+        with salvar_col:
+            if st.button("💾 Salvar", key=f"salvar_{rodada_doc.id}_{idx}"):
+                try:
+                    jogos[idx]["gols_mandante"] = gm
+                    jogos[idx]["gols_visitante"] = gv
+                    rodada_doc.reference.update({"jogos": jogos})
+                    st.success("✅ Resultado salvo com sucesso!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Erro ao salvar: {e}")
