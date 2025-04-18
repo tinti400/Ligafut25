@@ -56,7 +56,7 @@ for jogador in elenco:
     col1, col2, col3, col4, col5 = st.columns([1.2, 3, 1.2, 2, 1.5])
 
     with col1:
-        st.markdown(f"**{jogador.get('posição', '-')[:3]}**")
+        st.markdown(f"**{jogador.get('posicao', '-')[:3]}**")  # Corrigido aqui
     with col2:
         st.markdown(f"**{jogador.get('nome', '-')}**")
     with col3:
