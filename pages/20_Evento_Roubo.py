@@ -49,7 +49,7 @@ roubos = evento.get("roubos", {})
 if eh_admin:
     st.markdown("### 👑 Painel do Administrador")
     if not ativo:
-        if st.button("🚨 Iniciar Evento de Roubo"):
+        if st.button("🚀 Iniciar Evento de Roubo"):
             try:
                 times_ref = db.collection("times").stream()
                 ordem = [doc.id for doc in times_ref]
@@ -66,12 +66,12 @@ if eh_admin:
                     "ja_perderam": {},
                     "finalizado": False
                 })
-                st.success("Evento de roubo iniciado com sucesso!")
+                st.success("Evento iniciado com sucesso!")
                 st.rerun()
             except Exception as e:
                 st.error(f"Erro ao iniciar evento: {e}")
     else:
-        if st.button("🛑 Encerrar Evento de Roubo"):
+        if st.button("🛑 Encerrar Evento"):
             try:
                 evento_ref.update({"ativo": False, "finalizado": True})
                 st.success("Evento encerrado.")
@@ -84,6 +84,7 @@ st.markdown("---")
 if ativo:
     st.success(f"Evento ativo - Fase: {fase.upper()}")
 
+    # FASE ÚNICA - AÇÃO
     if fase == "acao":
         st.subheader("🎯 Ordem e Vez Atual")
         for i, tid in enumerate(ordem):
@@ -109,36 +110,36 @@ if ativo:
 
                     nome_t = tdoc.to_dict().get("nome", "Desconhecido")
                     with st.expander(f"📂 {nome_t}"):
-                        elenco = db.collection("times").document(tid).collection("elenco").stream()
-                        for jogador in elenco:
+                        elenco_ref = db.collection("times").document(tid).collection("elenco").stream()
+                        for jogador in elenco_ref:
                             j = jogador.to_dict()
-                            if 'nome' not in j or 'posicao' not in j:
-                                continue
+                            nome = j.get("nome", "Desconhecido")
+                            posicao = j.get("posicao", "Desconhecida")
+                            valor = j.get("valor", 0)
 
-                            # Verifica se já foi roubado por outro
-                            ja_roubado = any(j['nome'] == r['nome'] for rlist in roubos.values() for r in rlist)
+                            # Verifica se esse jogador já foi roubado por outro time
+                            ja_roubado = any(
+                                nome == rob.get("nome") and rob.get("de") == tid
+                                for r in roubos.values() for rob in r
+                            )
                             if ja_roubado:
                                 continue
 
-                            bloqueado = any(j['nome'] == b.get('nome') for b in bloqueios.get(tid, []))
+                            bloqueado = any(nome == b.get("nome") for b in bloqueios.get(tid, []))
                             if bloqueado:
-                                st.markdown(f"🔒 {j['nome']} - {j['posicao']} (R$ {j.get('valor', 0):,.0f})")
+                                st.markdown(f"🔒 {nome} - {posicao} (R$ {valor:,.0f})")
                             else:
-                                preco = j.get("valor", 0) * 0.5
-                                if st.button(f"Roubar {j['nome']} por R$ {preco:,.0f}", key=f"{tid}_{j['nome']}"):
+                                if st.button(f"Roubar {nome} (R$ {valor/2:,.0f})", key=f"{tid}_{nome}"):
                                     novo = roubos.get(id_time, [])
-                                    novo.append({
-                                        "nome": j['nome'],
-                                        "posicao": j['posicao'],
-                                        "valor": j.get("valor", 0),  # entra com valor integral
-                                        "de": tid
-                                    })
+                                    novo.append({"nome": nome, "posicao": posicao, "valor": valor, "de": tid})
                                     roubos[id_time] = novo
                                     ja_perderam[tid] = ja_perderam.get(tid, 0) + 1
                                     evento_ref.update({"roubos": roubos, "ja_perderam": ja_perderam})
-                                    st.success(f"Jogador {j['nome']} marcado para roubo.")
+                                    st.success(f"{nome} selecionado para roubo!")
                                     st.rerun()
 
+                if len(roubos.get(id_time, [])) >= 5:
+                    st.info("Você já fez os 5 roubos permitidos.")
                 if st.button("✅ Finalizar minha vez"):
                     concluidos.append(id_time)
                     evento_ref.update({"concluidos": concluidos, "vez": vez + 1})
@@ -148,7 +149,7 @@ if ativo:
                     evento_ref.update({"vez": vez + 1})
                     st.rerun()
 
-    # FASE FINAL
+    # FINALIZADO
     if evento.get("finalizado"):
         st.success("✅ Evento finalizado. Veja o resumo:")
         for tid, acoes in roubos.items():
@@ -159,18 +160,17 @@ if ativo:
                 st.markdown(f"- {j['nome']} ({j['posicao']}) do time {nome_vendido}")
                 try:
                     db.collection("times").document(j['de']).collection("elenco").where("nome", "==", j['nome']).get()[0].reference.delete()
-                    db.collection("times").document(tid).collection("elenco").add(j)
-
-                    valor_inteiro = j["valor"]
-                    valor_pago = int(valor_inteiro * 0.5)
-
+                    db.collection("times").document(tid).collection("elenco").add({
+                        "nome": j["nome"],
+                        "posicao": j["posicao"],
+                        "valor": j["valor"]  # entra com valor total no elenco
+                    })
                     saldo_de = db.collection("times").document(j['de']).get().to_dict().get("saldo", 0)
                     saldo_para = db.collection("times").document(tid).get().to_dict().get("saldo", 0)
-
-                    db.collection("times").document(j['de']).update({"saldo": saldo_de + valor_pago})
-                    db.collection("times").document(tid).update({"saldo": saldo_para - valor_pago})
-
-                    registrar_movimentacao(db, tid, j['nome'], "Roubo", "Compra", valor_pago)
+                    metade = j["valor"] / 2
+                    db.collection("times").document(j['de']).update({"saldo": saldo_de + metade})
+                    db.collection("times").document(tid).update({"saldo": saldo_para - metade})
+                    registrar_movimentacao(db, tid, j['nome'], "Roubo", "Compra", metade)
                 except Exception as e:
                     st.error(f"Erro ao transferir {j['nome']}: {e}")
 else:
