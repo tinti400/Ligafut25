@@ -119,12 +119,12 @@ if ativo:
 
         escolhidos = st.multiselect(
             "Jogadores para bloquear:",
-            options=opcoes + default_validos,
+            options=opcoes,
             default=default_validos,
             max_selections=4
         )
 
-        if st.button("🔒 Salvar bloqueios"):
+        if st.button("🔐 Salvar bloqueios"):
             novos = [j for j in elenco if f"{j['nome']} - {j['posicao']}" in escolhidos]
             bloqueios[id_time] = novos
             evento_ref.update({"bloqueios": bloqueios})
@@ -146,19 +146,14 @@ if ativo:
             if tid in concluidos:
                 st.markdown(f"🟢 {nome}")
             elif i == vez:
-                st.markdown(f"🟡 {nome} (vez atual)")
+                st.markdown(f"🔹 {nome} (vez atual)")
             else:
                 st.markdown(f"⚪ {nome}")
-
-        # Lista de jogadores já comprados por qualquer time
-        jogadores_ja_comprados = []
-        for lances in roubos.values():
-            jogadores_ja_comprados.extend([j["nome"] for j in lances if "nome" in j])
 
         if vez < len(ordem):
             id_vez = ordem[vez]
             if id_time == id_vez:
-                st.success("É sua vez! Escolha jogadores para pagar a multa.")
+                st.success("🎾 É sua vez! Escolha jogadores para pagar a multa.")
                 st.markdown("Escolha um time adversário:")
 
                 times_ref = db.collection("times").stream()
@@ -170,30 +165,39 @@ if ativo:
                     nome_t = tdoc.to_dict().get("nome", "Desconhecido")
                     with st.expander(f"📂 {nome_t}"):
                         elenco = db.collection("times").document(tid).collection("elenco").stream()
-                        for jogador in elenco:
-                            j = jogador.to_dict()
-                            if 'nome' not in j or 'posicao' not in j:
+                        for jogador_doc in elenco:
+                            j = jogador_doc.to_dict()
+                            nome_jogador = j.get("nome")
+                            posicao = j.get("posicao", "Desconhecida")
+                            valor = j.get("valor", 0)
+
+                            if not nome_jogador:
                                 continue
 
-                            if j['nome'] in jogadores_ja_comprados:
+                            # Verifica se o jogador já foi comprado por outro time
+                            ja_foi_roubado = any(
+                                nome_jogador == r.get("nome") and r.get("de") == tid
+                                for rlist in roubos.values() for r in rlist
+                            )
+                            if ja_foi_roubado:
                                 continue
 
-                            bloqueado = any(j['nome'] == b.get('nome') for b in bloqueios.get(tid, []))
+                            bloqueado = any(nome_jogador == b.get("nome") for b in bloqueios.get(tid, []))
                             if bloqueado:
-                                st.markdown(f"🔒 {j['nome']} - {j['posicao']} (R$ {j.get('valor', 0):,.0f})")
+                                st.markdown(f"🔐 {nome_jogador} - {posicao} (R$ {valor:,.0f})")
                             else:
-                                if st.button(f"Pagar multa por {j['nome']} (R$ {j.get('valor', 0):,.0f})", key=f"{tid}_{j['nome']}"):
+                                if st.button(f"Pagar multa por {nome_jogador} (R$ {valor:,.0f})", key=f"{tid}_{nome_jogador}"):
                                     novo = roubos.get(id_time, [])
                                     novo.append({
-                                        "nome": j['nome'],
-                                        "posicao": j['posicao'],
-                                        "valor": j.get("valor", 0),
+                                        "nome": nome_jogador,
+                                        "posicao": posicao,
+                                        "valor": valor,
                                         "de": tid
                                     })
                                     roubos[id_time] = novo
                                     ja_perderam[tid] = ja_perderam.get(tid, 0) + 1
                                     evento_ref.update({"roubos": roubos, "ja_perderam": ja_perderam})
-                                    st.success(f"Multa registrada por {j['nome']}")
+                                    st.success(f"Multa registrada por {nome_jogador}")
                                     st.rerun()
 
                 if len(roubos.get(id_time, [])) >= 5:
@@ -212,7 +216,7 @@ if ativo:
         st.success("✅ Evento finalizado. Veja o resumo:")
         for tid, acoes in roubos.items():
             nome_t = db.collection("times").document(tid).get().to_dict().get("nome", "Desconhecido")
-            st.markdown(f"### 🟦 {nome_t} comprou por multa:")
+            st.markdown(f"### 🔵 {nome_t} comprou por multa:")
             for j in acoes:
                 nome_vendido = db.collection("times").document(j['de']).get().to_dict().get("nome", "")
                 st.markdown(f"- {j['nome']} ({j['posicao']}) do time {nome_vendido}")
