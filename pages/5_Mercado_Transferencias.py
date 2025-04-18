@@ -6,7 +6,7 @@ from utils import registrar_movimentacao
 
 st.set_page_config(page_title="Mercado de Transferências - LigaFut", layout="wide")
 
-# 🔐 Firebase 
+# 🔐 Firebase
 if "firebase" not in st.session_state:
     try:
         cred = service_account.Credentials.from_service_account_info(st.secrets["firebase"])
@@ -33,11 +33,11 @@ eh_admin = admin_ref.exists
 
 # 💵 Saldo do time
 saldo_time = db.collection("times").document(id_time).get().to_dict().get("saldo", 0)
-st.title("💰 Mercado de Transferências")
-st.markdown(f"### 💼 Saldo atual: **R$ {saldo_time:,.0f}**".replace(",", "."))
+st.title("Mercado de Transferências")
+st.markdown(f"### Saldo atual: **R$ {saldo_time:,.0f}**".replace(",", "."))
 
 # 🔎 Filtros
-st.markdown("### 🔍 Filtros")
+st.markdown("### Filtros")
 col1, col2, col3 = st.columns(3)
 with col1:
     filtro_nome = st.text_input("Nome do jogador").strip().lower()
@@ -52,10 +52,10 @@ if "pagina_mercado" not in st.session_state:
 
 col_pag1, col_pag2, col_pag3 = st.columns([1, 1, 5])
 with col_pag1:
-    if st.button(⬅️ Anterior", disabled=st.session_state["pagina_mercado"] <= 1):
+    if st.button("Anterior", disabled=st.session_state["pagina_mercado"] <= 1):
         st.session_state["pagina_mercado"] -= 1
 with col_pag2:
-    if st.button("➡️ Próxima"):
+    if st.button("Próxima"):
         st.session_state["pagina_mercado"] += 1
 
 # 📦 Busca jogadores do mercado
@@ -104,9 +104,9 @@ else:
         with col4:
             st.write(f"R$ {j['valor']:,.0f}".replace(",", "."))
         with col5:
-            if st.button("🛒", key=f"comprar_{j['id_doc']}"):
+            if st.button("Comprar", key=f"comprar_{j['id_doc']}"):
                 if saldo_time < j["valor"]:
-                    st.error("❌ Saldo insuficiente.")
+                    st.error("Saldo insuficiente.")
                 else:
                     try:
                         db.collection("mercado_transferencias").document(j["id_doc"]).delete()
@@ -118,13 +118,13 @@ else:
                         })
                         db.collection("times").document(id_time).update({"saldo": saldo_time - j["valor"]})
                         registrar_movimentacao(db, id_time, j["nome"], "Compra", "Mercado", j["valor"])
-                        st.success(f"✅ {j['nome']} comprado com sucesso!")
+                        st.success(f"{j['nome']} comprado com sucesso!")
                         st.rerun()
                     except Exception as e:
                         st.error(f"Erro na compra: {e}")
         with col6:
             if eh_admin:
-                if st.button("🗑️", key=f"excluir_{j['id_doc']}"):
+                if st.button("Excluir", key=f"excluir_{j['id_doc']}"):
                     try:
                         db.collection("mercado_transferencias").document(j["id_doc"]).delete()
                         st.success(f"{j['nome']} removido do mercado.")
@@ -133,7 +133,7 @@ else:
                         st.error(f"Erro ao excluir: {e}")
 
 # 📜 Histórico de transferências
-with st.expander("📜 Ver histórico de transferências"):
+with st.expander("Ver histórico de transferências"):
     mov_ref = db.collection("times").document(id_time).collection("movimentacoes").order_by("timestamp", direction=gc_firestore.Query.DESCENDING).stream()
     historico = [{"tipo": doc.to_dict().get("tipo"), "jogador": doc.to_dict().get("jogador"), "valor": doc.to_dict().get("valor")} for doc in mov_ref]
 
