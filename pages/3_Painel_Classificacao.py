@@ -5,7 +5,7 @@ import pandas as pd
 
 st.set_page_config(page_title="Rodadas e Classificação - LigaFut", layout="wide")
 
-# 🔐 Firebase
+# Inicializa Firebase
 if "firebase" not in st.session_state:
     try:
         cred = service_account.Credentials.from_service_account_info(st.secrets["firebase"])
@@ -17,7 +17,7 @@ if "firebase" not in st.session_state:
 else:
     db = st.session_state["firebase"]
 
-# 📅 Carrega times
+# Carrega times
 try:
     times_ref = db.collection("times").stream()
     times_dict = {doc.id: doc.to_dict().get("nome", "Sem Nome") for doc in times_ref}
@@ -25,7 +25,7 @@ except Exception as e:
     st.error(f"Erro ao buscar times: {e}")
     st.stop()
 
-# 🔢 Classificação no topo
+# Classificacao no topo
 st.markdown("<h2 style='text-align: center;'>📊 Classificação Atualizada</h2>", unsafe_allow_html=True)
 
 tabela = {tid: {
@@ -40,37 +40,35 @@ except Exception as e:
     st.error(f"Erro ao buscar rodadas: {e}")
     st.stop()
 
-# Processa toda a pontuação antes de mostrar rodadas
+# Processa classificacao apenas com jogos que possuem gols salvos
 for rodada_doc in rodadas:
     jogos = rodada_doc.to_dict().get("jogos", [])
     for jogo in jogos:
-        gm = jogo.get("gols_mandante")
-        gv = jogo.get("gols_visitante")
-        if gm is None or gv is None:
-            continue
-
         mandante = jogo["mandante"]
         visitante = jogo["visitante"]
+        gm = jogo.get("gols_mandante")
+        gv = jogo.get("gols_visitante")
 
-        for time_id in [mandante, visitante]:
-            if time_id not in tabela:
-                continue
-            tabela[time_id]["J"] += 1
+        if gm is not None and gv is not None:
+            for time_id in [mandante, visitante]:
+                if time_id not in tabela:
+                    continue
+                tabela[time_id]["J"] += 1
 
-        tabela[mandante]["GP"] += gm
-        tabela[mandante]["GC"] += gv
-        tabela[visitante]["GP"] += gv
-        tabela[visitante]["GC"] += gm
+            tabela[mandante]["GP"] += gm
+            tabela[mandante]["GC"] += gv
+            tabela[visitante]["GP"] += gv
+            tabela[visitante]["GC"] += gm
 
-        if gm > gv:
-            tabela[mandante]["V"] += 1
-            tabela[visitante]["D"] += 1
-        elif gv > gm:
-            tabela[visitante]["V"] += 1
-            tabela[mandante]["D"] += 1
-        else:
-            tabela[mandante]["E"] += 1
-            tabela[visitante]["E"] += 1
+            if gm > gv:
+                tabela[mandante]["V"] += 1
+                tabela[visitante]["D"] += 1
+            elif gv > gm:
+                tabela[visitante]["V"] += 1
+                tabela[mandante]["D"] += 1
+            else:
+                tabela[mandante]["E"] += 1
+                tabela[visitante]["E"] += 1
 
 # Calcula pontos
 for t in tabela.values():
@@ -91,8 +89,8 @@ def estilo(row):
 
 st.dataframe(df.style.apply(estilo, axis=1), use_container_width=True)
 
-# 📋 Rodadas com navegação
-st.markdown("<hr><h2 style='text-align: center;'>📅 Rodadas</h2>", unsafe_allow_html=True)
+# Rodadas
+st.markdown("<hr><h2 style='text-align: center;'>🗓️ Rodadas</h2>", unsafe_allow_html=True)
 
 rodada_atual_idx = st.session_state.get("rodada_atual_idx", 0)
 rodada_total = len(rodadas)
@@ -107,7 +105,7 @@ with col_btn2:
 
 st.session_state["rodada_atual_idx"] = rodada_atual_idx
 
-# Exibe apenas a rodada selecionada
+# Exibe rodada
 rodada_doc = rodadas[rodada_atual_idx]
 rodada_data = rodada_doc.to_dict()
 numero_rodada = rodada_data.get("numero", "?")
@@ -118,8 +116,8 @@ st.markdown(f"### Rodada {numero_rodada}")
 for idx, jogo in enumerate(jogos):
     mandante_id = jogo.get("mandante")
     visitante_id = jogo.get("visitante")
-    gols_mandante = jogo.get("gols_mandante")
-    gols_visitante = jogo.get("gols_visitante")
+    gm_valor = jogo.get("gols_mandante")
+    gv_valor = jogo.get("gols_visitante")
 
     nome_mandante = times_dict.get(mandante_id, "Time A")
     nome_visitante = times_dict.get(visitante_id, "Time B")
@@ -128,25 +126,15 @@ for idx, jogo in enumerate(jogos):
     with col1:
         st.markdown(f"<span style='font-size:15px'>{nome_mandante}</span>", unsafe_allow_html=True)
     with col2:
-        gm = st.number_input(
-            " ", min_value=0, step=1,
-            value=gols_mandante if gols_mandante is not None else 0,
-            placeholder="Gols",
-            key=f"{rodada_doc.id}_{idx}_gm"
-        )
+        gm = st.number_input(" ", min_value=0, step=1, value=gm_valor if gm_valor is not None else None, key=f"{rodada_doc.id}_{idx}_gm")
     with col3:
         st.markdown("x")
     with col4:
-        gv = st.number_input(
-            "  ", min_value=0, step=1,
-            value=gols_visitante if gols_visitante is not None else 0,
-            placeholder="Gols",
-            key=f"{rodada_doc.id}_{idx}_gv"
-        )
+        gv = st.number_input("  ", min_value=0, step=1, value=gv_valor if gv_valor is not None else None, key=f"{rodada_doc.id}_{idx}_gv")
     with col5:
         st.markdown(f"<span style='font-size:15px'>{nome_visitante}</span>", unsafe_allow_html=True)
     with col6:
-        if st.button("💾", key=f"salvar_{rodada_doc.id}_{idx}"):
+        if st.button("📅", key=f"salvar_{rodada_doc.id}_{idx}"):
             try:
                 jogos[idx]["gols_mandante"] = gm
                 jogos[idx]["gols_visitante"] = gv
