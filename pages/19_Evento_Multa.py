@@ -38,7 +38,14 @@ evento = evento_doc.to_dict() if evento_doc.exists else {}
 
 ativo = evento.get("ativo", False)
 inicio_ts = evento.get("inicio")
-inicio = inicio_ts.to_datetime().replace(tzinfo=None) if inicio_ts else None
+
+# ✅ Conversão segura do timestamp
+if isinstance(inicio_ts, datetime):
+    inicio = inicio_ts.replace(tzinfo=None)
+elif hasattr(inicio_ts, "to_datetime"):
+    inicio = inicio_ts.to_datetime().replace(tzinfo=None)
+else:
+    inicio = None
 
 # ---------------------- ADMIN ----------------------
 if eh_admin:
@@ -136,7 +143,7 @@ if ativo:
                     if ja_perderam.get(tid, 0) >= 4:
                         continue
 
-                    nome_t = tdoc.to_dict().get("nome")
+                    nome_t = tdoc.to_dict().get("nome", "Desconhecido")
                     with st.expander(f"📂 {nome_t}"):
                         elenco = db.collection("times").document(tid).collection("elenco").stream()
                         for jogador in elenco:
@@ -186,4 +193,5 @@ if ativo:
                     st.error(f"Erro ao transferir {j['nome']}: {e}")
 else:
     st.warning("🔒 Evento de multa não está ativo.")
+
 
