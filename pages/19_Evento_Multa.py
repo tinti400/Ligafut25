@@ -7,7 +7,7 @@ import random
 
 st.set_page_config(page_title="Evento de Multa - LigaFut", layout="wide")
 
-# Firebase
+# 🔐 Firebase
 if "firebase" not in st.session_state:
     try:
         cred = service_account.Credentials.from_service_account_info(st.secrets["firebase"])
@@ -27,11 +27,11 @@ nome_time = st.session_state["nome_time"]
 
 st.title("🚨 Evento de Multa - LigaFut")
 
-# Verifica se é admin
+# 👑 Verifica se é admin
 admin_ref = db.collection("admins").document(id_usuario).get()
 eh_admin = admin_ref.exists
 
-# Busca configuração do evento
+# 📄 Busca configuração do evento
 evento_ref = db.collection("configuracoes").document("evento_multa")
 evento_doc = evento_ref.get()
 evento = evento_doc.to_dict() if evento_doc.exists else {}
@@ -39,7 +39,7 @@ evento = evento_doc.to_dict() if evento_doc.exists else {}
 ativo = evento.get("ativo", False)
 inicio_ts = evento.get("inicio")
 
-# ✅ Conversão segura do timestamp
+# ✅ Conversão segura do timestamp Firestore
 if isinstance(inicio_ts, datetime):
     inicio = inicio_ts.replace(tzinfo=None)
 elif hasattr(inicio_ts, "to_datetime"):
@@ -138,9 +138,7 @@ if ativo:
                 times_ref = db.collection("times").stream()
                 for tdoc in times_ref:
                     tid = tdoc.id
-                    if tid == id_time:
-                        continue
-                    if ja_perderam.get(tid, 0) >= 4:
+                    if tid == id_time or ja_perderam.get(tid, 0) >= 4:
                         continue
 
                     nome_t = tdoc.to_dict().get("nome", "Desconhecido")
