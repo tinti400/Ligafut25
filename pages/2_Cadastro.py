@@ -5,7 +5,7 @@ import uuid
 
 st.set_page_config(page_title="Cadastro de Usuário", layout="wide")
 
-# 🔐 Inicializar Firebase com secrets seguros (compatível com Cloud)
+# 🔐 Inicializa Firebase
 if "firebase" not in st.session_state:
     try:
         cred = service_account.Credentials.from_service_account_info(st.secrets["firebase"])
@@ -19,41 +19,44 @@ else:
 
 st.title("📝 Cadastro de Usuário")
 
-# Formulário
-usuario = st.text_input("Usuário (E-mail)").strip().lower()
+usuario = st.text_input("Usuário (e-mail)").strip().lower()
 senha = st.text_input("Senha", type="password")
 nome_time = st.text_input("Nome do Time").strip()
+divisao = st.selectbox("Divisão", ["divisao_1"])  # Futuramente adicione mais divisões aqui
 
 if st.button("Cadastrar"):
-    if usuario and senha and nome_time:
+    if not usuario or not senha or not nome_time or not divisao:
+        st.warning("Preencha todos os campos.")
+    else:
         try:
-            # Verifica se já existe
-            users = db.collection("usuarios").where("usuario", "==", usuario).stream()
-            if any(users):
-                st.warning("🚨 Já existe um usuário com esse e-mail.")
+            # Verifica se o usuário já existe
+            existe = db.collection("usuarios").where("usuario", "==", usuario).get()
+            if existe:
+                st.error("Usuário já cadastrado.")
             else:
-                id_time = str(uuid.uuid4())  # ID único do time
+                # Cria ID único para o time
+                id_time = str(uuid.uuid4())
 
-                # Cria o time
+                # Cria time com saldo inicial
                 db.collection("times").document(id_time).set({
                     "nome": nome_time,
-                    "saldo": 250_000_000  # saldo inicial
+                    "saldo": 250_000_000,
+                    "divisao": divisao
                 })
 
-                # Cria o usuário
+                # Cadastra usuário vinculado ao time
                 db.collection("usuarios").add({
                     "usuario": usuario,
                     "senha": senha,
                     "id_time": id_time,
-                    "nome_time": nome_time
+                    "nome_time": nome_time,
+                    "divisao": divisao
                 })
 
                 st.success("✅ Cadastro realizado com sucesso!")
-                st.info("Agora você pode fazer login na página inicial.")
+                st.info("Você já pode acessar o sistema com seu login.")
         except Exception as e:
             st.error(f"Erro ao cadastrar: {e}")
-    else:
-        st.warning("Preencha todos os campos.")
 
         usuarios_ref = db.collection("usuarios")
 
