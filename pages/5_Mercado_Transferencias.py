@@ -57,21 +57,35 @@ st.markdown(f"### 💰 Saldo atual: **R$ {saldo_time:,.0f}**".replace(",", "."))
 
 # 🔍 Filtros
 st.markdown("### 🔍 Filtros de Pesquisa")
-col1, col2, col3 = st.columns(3)
+col1, col2, col3, col4 = st.columns([3, 2, 3, 2])
 with col1:
     filtro_nome = st.text_input("Nome do jogador").strip().lower()
 with col2:
     filtro_posicao = st.selectbox("Posição", ["Todas", "GL", "LD", "ZAG", "LE", "VOL", "MC", "MD", "ME", "PD", "PE", "SA", "CA"])
 with col3:
     filtro_valor = st.slider("Valor máximo (R$)", 0, 300_000_000, 300_000_000, step=1_000_000)
+with col4:
+    filtro_ordenacao = st.selectbox("Ordenar por", [
+        "Padrão",
+        "Maior Overall",
+        "Menor Overall",
+        "Maior Valor",
+        "Menor Valor"
+    ])
 
 # ⚠️ Resetar página caso filtros mudem
-filtros_aplicados = st.session_state.get("filtros_aplicados", {"nome": "", "posicao": "Todas", "valor": 300_000_000})
+filtros_aplicados = st.session_state.get("filtros_aplicados", {
+    "nome": "",
+    "posicao": "Todas",
+    "valor": 300_000_000,
+    "ordenacao": "Padrão"
+})
 
 mudou_filtro = (
     filtro_nome != filtros_aplicados["nome"] or
     filtro_posicao != filtros_aplicados["posicao"] or
-    filtro_valor != filtros_aplicados["valor"]
+    filtro_valor != filtros_aplicados["valor"] or
+    filtro_ordenacao != filtros_aplicados["ordenacao"]
 )
 
 if mudou_filtro:
@@ -79,7 +93,8 @@ if mudou_filtro:
     st.session_state["filtros_aplicados"] = {
         "nome": filtro_nome,
         "posicao": filtro_posicao,
-        "valor": filtro_valor
+        "valor": filtro_valor,
+        "ordenacao": filtro_ordenacao
     }
 
 # 📦 Carrega jogadores do mercado
@@ -94,13 +109,23 @@ for doc in mercado_ref:
 # 🎯 Aplica filtros
 jogadores_filtrados = []
 for j in todos_jogadores:
-    if filtro_nome and filtro_nome not in j["nome"].lower():
+    if filtro_nome and filtro_nome not in j.get("nome", "").lower():
         continue
     if filtro_posicao != "Todas" and j.get("posicao") != filtro_posicao:
         continue
     if j.get("valor", 0) > filtro_valor:
         continue
     jogadores_filtrados.append(j)
+
+# 🔃 Ordenação
+if filtro_ordenacao == "Maior Overall":
+    jogadores_filtrados.sort(key=lambda x: x.get("overall", 0), reverse=True)
+elif filtro_ordenacao == "Menor Overall":
+    jogadores_filtrados.sort(key=lambda x: x.get("overall", 0))
+elif filtro_ordenacao == "Maior Valor":
+    jogadores_filtrados.sort(key=lambda x: x.get("valor", 0), reverse=True)
+elif filtro_ordenacao == "Menor Valor":
+    jogadores_filtrados.sort(key=lambda x: x.get("valor", 0))
 
 # 🔢 Paginação
 if "pagina_mercado" not in st.session_state:
