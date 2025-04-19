@@ -36,7 +36,7 @@ for doc in times_ref:
     time["id"] = doc.id
     times.append(time)
 
-# 🔽 Selecionar time para adicionar saldo
+# 🔽 Selecionar time para adicionar ou ajustar saldo
 nomes_times = [f"{t['nome']} (ID: {t['id']})" for t in times]
 escolhido = st.selectbox("Selecione um time:", nomes_times)
 
@@ -49,7 +49,8 @@ saldo_atual = time.get("saldo", 0)
 st.markdown(f"### 💼 {nome_time}")
 st.markdown(f"**Saldo atual:** R$ {saldo_atual:,.0f}".replace(",", "."))
 
-# 💸 Adicionar saldo
+# 💸 Adicionar saldo ao saldo atual
+st.subheader("➕ Adicionar valor ao saldo")
 valor = st.number_input("💰 Valor a adicionar (R$)", min_value=1_000_000, step=500_000, format="%d")
 
 if st.button("✅ Adicionar saldo"):
@@ -57,10 +58,30 @@ if st.button("✅ Adicionar saldo"):
         try:
             novo_saldo = saldo_atual + valor
             db.collection("times").document(id_time).update({"saldo": novo_saldo})
-            registrar_movimentacao(db, id_time, "-", "Admin", "Adição Manual", valor)
+            registrar_movimentacao(db, id_time, "entrada", "Adição manual de saldo", valor)
             st.success(f"✅ R$ {valor:,.0f} adicionados ao clube {nome_time}".replace(",", "."))
             st.rerun()
         except Exception as e:
             st.error(f"Erro ao atualizar saldo: {e}")
     else:
         st.warning("Informe um valor válido.")
+
+# ✏️ Ajustar diretamente o valor do saldo
+st.markdown("---")
+st.subheader("✏️ Atualização direta do saldo")
+
+novo_valor_manual = st.number_input("💼 Novo valor de saldo (R$)", min_value=0, step=1_000_000, format="%d")
+
+if st.button("✏️ Atualizar saldo manualmente"):
+    try:
+        diferenca = novo_valor_manual - saldo_atual
+        tipo = "entrada" if diferenca > 0 else "saida"
+        descricao = "Ajuste manual de saldo pelo administrador"
+
+        db.collection("times").document(id_time).update({"saldo": novo_valor_manual})
+        registrar_movimentacao(db, id_time, tipo, descricao, abs(diferenca))
+
+        st.success(f"✅ Saldo do time {nome_time} atualizado para R$ {novo_valor_manual:,.0f}".replace(",", "."))
+        st.rerun()
+    except Exception as e:
+        st.error(f"Erro ao atualizar saldo manualmente: {e}")
