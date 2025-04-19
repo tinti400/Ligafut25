@@ -1,7 +1,7 @@
 import streamlit as st
 from google.oauth2 import service_account
 from google.cloud import firestore
-from utils import registrar_movimentacao
+from utils import registrar_movimentacao, verificar_login
 
 st.set_page_config(page_title="Admin - Times", layout="wide")
 
@@ -17,7 +17,9 @@ if "firebase" not in st.session_state:
 else:
     db = st.session_state["firebase"]
 
-# ✅ Verifica se é admin
+# ✅ Verifica login e permissão de administrador
+verificar_login()
+
 id_usuario = st.session_state.get("usuario_id", "")
 admin_ref = db.collection("admins").document(id_usuario).get()
 eh_admin = admin_ref.exists
@@ -49,7 +51,7 @@ saldo_atual = time.get("saldo", 0)
 st.markdown(f"### 💼 {nome_time}")
 st.markdown(f"**Saldo atual:** R$ {saldo_atual:,.0f}".replace(",", "."))
 
-# 💸 Adicionar saldo ao saldo atual
+# ➕ Adicionar valor ao saldo
 st.subheader("➕ Adicionar valor ao saldo")
 valor = st.number_input("💰 Valor a adicionar (R$)", min_value=1_000_000, step=500_000, format="%d")
 
