@@ -73,19 +73,19 @@ with col4:
         "Menor Valor"
     ])
 
-# ⚠️ Resetar página caso filtros mudem
-filtros_aplicados = st.session_state.get("filtros_aplicados", {
-    "nome": "",
-    "posicao": "Todas",
-    "valor": 300_000_000,
-    "ordenacao": "Padrão"
-})
+# ✅ Corrige problema de KeyError na primeira execução
+filtros_aplicados = st.session_state.get("filtros_aplicados", {})
+
+filtro_nome_old = filtros_aplicados.get("nome", "")
+filtro_posicao_old = filtros_aplicados.get("posicao", "Todas")
+filtro_valor_old = filtros_aplicados.get("valor", 300_000_000)
+filtro_ordenacao_old = filtros_aplicados.get("ordenacao", "Padrão")
 
 mudou_filtro = (
-    filtro_nome != filtros_aplicados["nome"] or
-    filtro_posicao != filtros_aplicados["posicao"] or
-    filtro_valor != filtros_aplicados["valor"] or
-    filtro_ordenacao != filtros_aplicados["ordenacao"]
+    filtro_nome != filtro_nome_old or
+    filtro_posicao != filtro_posicao_old or
+    filtro_valor != filtro_valor_old or
+    filtro_ordenacao != filtro_ordenacao_old
 )
 
 if mudou_filtro:
