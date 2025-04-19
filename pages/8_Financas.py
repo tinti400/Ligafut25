@@ -1,15 +1,16 @@
 import streamlit as st
-from google.oauth2 import service_account
-import google.cloud.firestore as gc_firestore
 import pandas as pd
+from google.oauth2 import service_account
+from google.cloud import firestore
+from utils import verificar_login
 
-st.set_page_config(page_title="Finanças - LigaFut", layout="wide")
+st.set_page_config(page_title="💰 Finanças", layout="wide")
 
-# 🔐 Inicializa Firebase com st.secrets (sem credenciais.json)
+# 🔐 Firebase
 if "firebase" not in st.session_state:
     try:
         cred = service_account.Credentials.from_service_account_info(st.secrets["firebase"])
-        db = gc_firestore.Client(credentials=cred, project=st.secrets["firebase"]["project_id"])
+        db = firestore.Client(credentials=cred, project=st.secrets["firebase"]["project_id"])
         st.session_state["firebase"] = db
     except Exception as e:
         st.error(f"Erro ao conectar com o Firebase: {e}")
@@ -17,44 +18,38 @@ if "firebase" not in st.session_state:
 else:
     db = st.session_state["firebase"]
 
-# ✅ Verifica login
-if "usuario_id" not in st.session_state or not st.session_state.usuario_id:
-    st.warning("Você precisa estar logado para acessar esta página.")
-    st.stop()
+# 🔐 Verifica login
+verificar_login()
 
-id_time = st.session_state.id_time
-nome_time = st.session_state.nome_time
+id_time = st.session_state["id_time"]
+nome_time = st.session_state["nome_time"]
 
-st.markdown(f"<h1 style='text-align: center;'>💼 Finanças do {nome_time}</h1><hr>", unsafe_allow_html=True)
+st.title("💰 Finanças do Clube")
+st.markdown(f"### 📊 Time: **{nome_time}**")
 
-# 🔎 Mostra o saldo atual
-try:
-    time_doc = db.collection("times").document(id_time).get()
-    saldo = time_doc.to_dict().get("saldo", 0)
-    saldo_formatado = f"R$ {saldo:,.0f}".replace(",", ".")
-    st.markdown(f"<h3 style='text-align:center;'>💰 Saldo Atual: {saldo_formatado}</h3>", unsafe_allow_html=True)
-except Exception as e:
-    st.error(f"Erro ao buscar saldo: {e}")
-    st.stop()
+# 📥 Carrega movimentações
+mov_ref = db.collection("times").document(id_time).collection("movimentacoes").order_by("data", direction=firestore.Query.DESCENDING).stream()
+movimentacoes = [doc.to_dict() for doc in mov_ref]
 
-# 🔄 Recupera movimentações
-try:
-    movs_ref = db.collection("times").document(id_time).collection("movimentacoes").stream()
-    movimentacoes = [doc.to_dict() for doc in movs_ref]
-except Exception as e:
-    st.error(f"Erro ao buscar movimentações financeiras: {e}")
-    st.stop()
+# ✅ Preenche jogador com "N/A" se não existir
+for mov in movimentacoes:
+    if "jogador" not in mov:
+        mov["jogador"] = "N/A"
 
-# 📋 Exibição
-if not movimentacoes:
-    st.info("📭 Nenhuma movimentação financeira registrada.")
+# 📊 Monta DataFrame
+df = pd.DataFrame(movimentacoes)
+
+if not df.empty and all(col in df.columns for col in ["tipo", "jogador", "valor"]):
+    df["valor"] = df["valor"].apply(lambda x: f"R$ {x:,.0f}".replace(",", "."))
+    df["data"] = pd.to_datetime(df["data"], errors="coerce")
+    df = df[["data", "tipo", "jogador", "valor", "descricao"] if "descricao" in df.columns else ["data", "tipo", "jogador", "valor"]]
+    df = df.rename(columns={
+        "data": "Data",
+        "tipo": "Tipo",
+        "jogador": "Jogador",
+        "valor": "Valor",
+        "descricao": "Descrição"
+    })
+    st.dataframe(df, use_container_width=True)
 else:
-    df = pd.DataFrame(movimentacoes)
-
-    if all(col in df.columns for col in ["tipo", "jogador", "valor"]):
-        df["valor"] = df["valor"].apply(lambda x: f"R$ {x:,.0f}".replace(",", "."))
-        df = df[["tipo", "jogador", "valor"]]
-        df.columns = ["Tipo", "Jogador", "Valor"]
-        st.dataframe(df, use_container_width=True)
-    else:
-        st.warning("⚠️ Existem movimentações com dados incompletos.")
+    st.info("⚠️ Nenhuma movimentação financeira registrada.")
