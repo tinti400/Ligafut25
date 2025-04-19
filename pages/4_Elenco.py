@@ -49,6 +49,8 @@ for doc in elenco_ref:
     jogador["nome"] = jogador.get("nome", "Desconhecido")
     jogador["overall"] = jogador.get("overall", 0)
     jogador["valor"] = jogador.get("valor", 0)
+    jogador["nacionalidade"] = jogador.get("nacionalidade", "N/A")
+    jogador["time_origem"] = jogador.get("time_origem", nome_time)
     elenco.append(jogador)
 
 if not elenco:
@@ -100,10 +102,14 @@ with aba[0]:
             valor = jogador["valor"]
             valor_formatado = f"R$ {valor:,.0f}".replace(",", ".")
             id_doc = jogador["id_doc"]
+            origem = jogador.get("time_origem", "N/A")
+            nacionalidade = jogador.get("nacionalidade", "N/A")
 
-            col1, col2, col3, col4, col5 = st.columns([3, 2, 2, 2, 2])
+            col1, col2, col3, col4, col5 = st.columns([4, 2, 2, 2, 2])
             with col1:
                 st.markdown(f"**👤 {nome}** ({posicao})")
+                st.markdown(f"🏳️ {nacionalidade}")
+                st.markdown(f"🏟️ Origem: `{origem}`")
             with col2:
                 st.markdown(f"⭐ {overall}")
             with col3:
@@ -118,8 +124,8 @@ with aba[0]:
                                 "posicao": posicao,
                                 "overall": overall,
                                 "valor": valor,
-                                "time_origem": nome_time,
-                                "nacionalidade": jogador.get("nacionalidade", "N/A")
+                                "time_origem": origem,
+                                "nacionalidade": nacionalidade
                             })
                             valor_recebido = int(valor * 0.7)
                             time_doc = db.collection("times").document(id_time).get()
@@ -166,3 +172,4 @@ with aba[1]:
             st.success("✅ Formação salva com sucesso!")
         except Exception as e:
             st.error(f"Erro ao salvar formação: {e}")
+
