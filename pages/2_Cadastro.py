@@ -19,11 +19,42 @@ else:
 
 st.title("📝 Cadastro de Usuário")
 
+# Formulário
 usuario = st.text_input("Usuário (E-mail)").strip().lower()
 senha = st.text_input("Senha", type="password")
+nome_time = st.text_input("Nome do Time").strip()
 
 if st.button("Cadastrar"):
-    if usuario and senha:
+    if usuario and senha and nome_time:
+        try:
+            # Verifica se já existe
+            users = db.collection("usuarios").where("usuario", "==", usuario).stream()
+            if any(users):
+                st.warning("🚨 Já existe um usuário com esse e-mail.")
+            else:
+                id_time = str(uuid.uuid4())  # ID único do time
+
+                # Cria o time
+                db.collection("times").document(id_time).set({
+                    "nome": nome_time,
+                    "saldo": 250_000_000  # saldo inicial
+                })
+
+                # Cria o usuário
+                db.collection("usuarios").add({
+                    "usuario": usuario,
+                    "senha": senha,
+                    "id_time": id_time,
+                    "nome_time": nome_time
+                })
+
+                st.success("✅ Cadastro realizado com sucesso!")
+                st.info("Agora você pode fazer login na página inicial.")
+        except Exception as e:
+            st.error(f"Erro ao cadastrar: {e}")
+    else:
+        st.warning("Preencha todos os campos.")
+
         usuarios_ref = db.collection("usuarios")
 
         docs = usuarios_ref.where("usuario", "==", usuario).stream()
