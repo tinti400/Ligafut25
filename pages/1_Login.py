@@ -4,7 +4,7 @@ from google.cloud import firestore
 
 st.set_page_config(page_title="Login - LigaFut", page_icon="🔐", layout="centered")
 
-# 🔐 Firebase
+# 🔐 Conecta Firebase
 if "firebase" not in st.session_state:
     try:
         cred = service_account.Credentials.from_service_account_info(st.secrets["firebase"])
@@ -16,9 +16,25 @@ if "firebase" not in st.session_state:
 else:
     db = st.session_state["firebase"]
 
-st.markdown("<h2 style='text-align: center;'>🔐 Login - LigaFut</h2>", unsafe_allow_html=True)
+st.markdown("<h2 style='text-align: center;'>🏟️ LigaFut - Login</h2>", unsafe_allow_html=True)
 st.markdown("<br>", unsafe_allow_html=True)
 
+# ✅ SE JÁ ESTIVER LOGADO → mostra painel direto
+if "usuario" in st.session_state and st.session_state["usuario"]:
+    st.success(f"✅ Bem-vindo, {st.session_state['usuario']}!")
+
+    st.markdown("### 🏁 Painel Inicial")
+    st.info("Use o menu lateral para navegar entre as seções da LigaFut.")
+    st.markdown("⚽ Você já pode acessar sua equipe, transferências, classificação e muito mais!")
+
+    st.markdown("---")
+    if st.button("🚪 Sair"):
+        st.session_state.clear()
+        st.rerun()
+
+    st.stop()
+
+# ✅ FORMULÁRIO DE LOGIN
 with st.form("login_form"):
     usuario = st.text_input("Usuário (e-mail)")
     senha = st.text_input("Senha", type="password")
@@ -35,11 +51,11 @@ if botao_login:
 
             if usuario_encontrado:
                 dados = usuario_encontrado.to_dict()
-                st.session_state["usuario"] = dados.get("usuario")            # salva o e-mail
-                st.session_state["usuario_id"] = usuario_encontrado.id        # salva o ID do documento
+                st.session_state["usuario"] = dados.get("usuario")
+                st.session_state["usuario_id"] = usuario_encontrado.id
 
                 st.success("✅ Login realizado com sucesso!")
-                st.switch_page("4_Elenco")  # ✅ redireciona para tela Elenco (multipage)
+                st.rerun()
             else:
                 st.error("Usuário ou senha inválidos.")
         except Exception as e:
