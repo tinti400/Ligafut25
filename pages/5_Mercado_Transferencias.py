@@ -1,6 +1,6 @@
 import streamlit as st
 from google.oauth2 import service_account
-import google.cloud.firestore as gc_firestore
+from google.cloud import firestore
 import pandas as pd
 from utils import registrar_movimentacao
 
@@ -10,7 +10,7 @@ st.set_page_config(page_title="Mercado de Transferências - LigaFut", layout="wi
 if "firebase" not in st.session_state:
     try:
         cred = service_account.Credentials.from_service_account_info(st.secrets["firebase"])
-        db = gc_firestore.Client(credentials=cred, project=st.secrets["firebase"]["project_id"])
+        db = firestore.Client(credentials=cred, project=st.secrets["firebase"]["project_id"])
         st.session_state["firebase"] = db
     except Exception as e:
         st.error(f"Erro ao conectar com o Firebase: {e}")
@@ -28,11 +28,11 @@ id_time = st.session_state.id_time
 nome_time = st.session_state.nome_time
 email_usuario = st.session_state.get("usuario", "")
 
-# 👑 Verifica se é admin
+# 👑 Verifica se é admin por e-mail
 admin_ref = db.collection("admins").document(email_usuario).get()
 eh_admin = admin_ref.exists
 
-# ⚙️ Configuração do mercado
+# ⚙️ Controle de mercado (admin)
 mercado_cfg_ref = db.collection("configuracoes").document("mercado")
 mercado_doc = mercado_cfg_ref.get()
 mercado_aberto = mercado_doc.to_dict().get("aberto", True) if mercado_doc.exists else True
@@ -50,6 +50,16 @@ if eh_admin:
             st.success("✅ Mercado aberto com sucesso.")
             st.rerun()
 
+    if st.sidebar.button("🧹 Limpar Mercado"):
+        try:
+            docs = db.collection("mercado_transferencias").stream()
+            for doc in docs:
+                doc.reference.delete()
+            st.success("✅ Todos os jogadores foram removidos do mercado.")
+            st.rerun()
+        except Exception as e:
+            st.error(f"Erro ao limpar mercado: {e}")
+
 # 💰 Saldo
 saldo_time = db.collection("times").document(id_time).get().to_dict().get("saldo", 0)
 st.title("🛒 Mercado de Transferências")
@@ -57,47 +67,17 @@ st.markdown(f"### 💰 Saldo atual: **R$ {saldo_time:,.0f}**".replace(",", "."))
 
 # 🔍 Filtros
 st.markdown("### 🔍 Filtros de Pesquisa")
-col1, col2, col3, col4 = st.columns([3, 3, 3, 3])
+col1, col2, col3, col4 = st.columns(4)
 with col1:
     filtro_nome = st.text_input("Nome do jogador").strip().lower()
 with col2:
-    filtro_posicao = st.selectbox("Posição", [
-        "Todas",
-        "Goleiro (GL)", "Lateral direito (LD)", "Zagueiro (ZAG)", "Lateral esquerdo (LE)",
-        "Volante (VOL)", "Meio campo (MC)", "Meia direita (MD)", "Meia esquerda (ME)",
-        "Ponta direita (PD)", "Ponta esquerda (PE)", "Segundo atacante (SA)", "Centroavante (CA)"
-    ])
+    filtro_posicao = st.selectbox("Posição", ["Todas", "GL", "LD", "ZAG", "LE", "VOL", "MC", "MD", "ME", "PD", "PE", "SA", "CA"])
 with col3:
     filtro_valor = st.slider("Valor máximo (R$)", 0, 300_000_000, 300_000_000, step=1_000_000)
 with col4:
-    filtro_ordenacao = st.selectbox("Ordenar por", [
-        "Padrão", "Maior Overall", "Menor Overall", "Maior Valor", "Menor Valor"
-    ])
+    filtro_ordenacao = st.selectbox("Ordenar por", ["Nenhum", "Maior Overall", "Menor Overall", "Maior Valor", "Menor Valor"])
 
-# Corrige erro na primeira execução
-filtros_aplicados = st.session_state.get("filtros_aplicados", {})
-filtro_nome_old = filtros_aplicados.get("nome", "")
-filtro_posicao_old = filtros_aplicados.get("posicao", "Todas")
-filtro_valor_old = filtros_aplicados.get("valor", 300_000_000)
-filtro_ordenacao_old = filtros_aplicados.get("ordenacao", "Padrão")
-
-mudou_filtro = (
-    filtro_nome != filtro_nome_old or
-    filtro_posicao != filtro_posicao_old or
-    filtro_valor != filtro_valor_old or
-    filtro_ordenacao != filtro_ordenacao_old
-)
-
-if mudou_filtro:
-    st.session_state["pagina_mercado"] = 1
-    st.session_state["filtros_aplicados"] = {
-        "nome": filtro_nome,
-        "posicao": filtro_posicao,
-        "valor": filtro_valor,
-        "ordenacao": filtro_ordenacao
-    }
-
-# 🔍 Busca jogadores
+# 📦 Carrega jogadores do mercado
 mercado_ref = db.collection("mercado_transferencias").stream()
 todos_jogadores = []
 for doc in mercado_ref:
@@ -109,7 +89,7 @@ for doc in mercado_ref:
 # 🎯 Aplica filtros
 jogadores_filtrados = []
 for j in todos_jogadores:
-    if filtro_nome and filtro_nome not in j.get("nome", "").lower():
+    if filtro_nome and filtro_nome not in j["nome"].lower():
         continue
     if filtro_posicao != "Todas" and j.get("posicao") != filtro_posicao:
         continue
@@ -117,7 +97,7 @@ for j in todos_jogadores:
         continue
     jogadores_filtrados.append(j)
 
-# 🔃 Ordenação
+# 📊 Ordenação
 if filtro_ordenacao == "Maior Overall":
     jogadores_filtrados.sort(key=lambda x: x.get("overall", 0), reverse=True)
 elif filtro_ordenacao == "Menor Overall":
@@ -141,16 +121,14 @@ inicio = (pagina - 1) * por_pagina
 fim = inicio + por_pagina
 jogadores_pagina = jogadores_filtrados[inicio:fim]
 
-# 🔄 Navegação
+# 🔄 Navegação entre páginas
 col_nav1, col_nav2, col_nav3 = st.columns([1, 2, 1])
 with col_nav1:
     if st.button("⏪ Anterior", disabled=pagina <= 1):
         st.session_state["pagina_mercado"] -= 1
         st.rerun()
-
 with col_nav2:
     st.markdown(f"<p style='text-align: center;'>Página {pagina} de {total_paginas}</p>", unsafe_allow_html=True)
-
 with col_nav3:
     if st.button("⏩ Próxima", disabled=pagina >= total_paginas):
         st.session_state["pagina_mercado"] += 1
@@ -167,17 +145,23 @@ else:
         valor = j.get("valor", 0)
         time_origem = j.get("time_origem", "N/A")
         nacionalidade = j.get("nacionalidade", "N/A")
+        foto = j.get("foto")
 
         st.markdown("---")
-        col1, col2, col3, col4, col5 = st.columns([4, 2, 2, 2, 2])
+        col1, col2, col3, col4, col5, col6 = st.columns([1, 2, 2, 2, 2, 1])
         with col1:
+            if foto:
+                st.image(foto, width=60)
+            else:
+                st.image("https://cdn-icons-png.flaticon.com/512/147/147144.png", width=60)
+        with col2:
             st.markdown(f"**👤 {nome}** ({posicao}) - {nacionalidade}")
             st.markdown(f"Origem: `{time_origem}`")
-        with col2:
-            st.markdown(f"⭐ Overall: **{overall}**")
         with col3:
-            st.markdown(f"💰 Valor: **R$ {valor:,.0f}**".replace(",", "."))
+            st.markdown(f"⭐ Overall: **{overall}**")
         with col4:
+            st.markdown(f"💰 Valor: **R$ {valor:,.0f}**".replace(",", "."))
+        with col5:
             if mercado_aberto:
                 if st.button("✅ Comprar", key=f"comprar_{j['id_doc']}"):
                     if saldo_time < valor:
@@ -191,17 +175,19 @@ else:
                                 "overall": overall,
                                 "valor": valor,
                                 "time_origem": time_origem,
-                                "nacionalidade": nacionalidade
+                                "nacionalidade": nacionalidade,
+                                "foto": foto
                             })
                             db.collection("times").document(id_time).update({"saldo": saldo_time - valor})
-                            registrar_movimentacao(db, id_time, "saida", "Compra no mercado", valor, jogador=nome)
+                            registrar_movimentacao(db, id_time, "saida", "Compra no mercado", valor)
                             st.success(f"{nome} comprado com sucesso!")
                             st.rerun()
                         except Exception as e:
                             st.error(f"Erro na compra: {e}")
             else:
                 st.markdown("🔒 Mercado Fechado")
-        with col5:
+
+        with col6:
             if eh_admin:
                 if st.button("🗑️ Excluir", key=f"excluir_{j['id_doc']}"):
                     try:
@@ -213,13 +199,13 @@ else:
 
 # 📜 Histórico
 with st.expander("📜 Ver histórico de transferências"):
-    mov_ref = db.collection("times").document(id_time).collection("movimentacoes").order_by("timestamp", direction=gc_firestore.Query.DESCENDING).stream()
+    mov_ref = db.collection("times").document(id_time).collection("movimentacoes").order_by("timestamp", direction=firestore.Query.DESCENDING).stream()
     historico = []
     for doc in mov_ref:
         d = doc.to_dict()
         historico.append({
             "Tipo": d.get("tipo"),
-            "Jogador": d.get("jogador", "N/A"),
+            "Descrição": d.get("descricao", "N/A"),
             "Valor": f"R$ {d.get('valor', 0):,.0f}".replace(",", ".")
         })
 
