@@ -4,7 +4,7 @@ import google.cloud.firestore as gc_firestore
 
 st.set_page_config(page_title="Admin - Mercado", layout="wide")
 
-# 🔐 Inicializa Firebase com st.secrets (sem credenciais.json)
+# 🔐 Inicializa Firebase com st.secrets
 if "firebase" not in st.session_state:
     try:
         cred = service_account.Credentials.from_service_account_info(st.secrets["firebase"])
@@ -15,6 +15,13 @@ if "firebase" not in st.session_state:
         st.stop()
 else:
     db = st.session_state["firebase"]
+
+# 🔒 Verifica se é admin
+id_usuario = st.session_state.get("usuario_id", "")
+admin_ref = db.collection("admins").document(id_usuario).get()
+if not admin_ref.exists:
+    st.warning("🔒 Acesso restrito apenas para administradores.")
+    st.stop()
 
 st.markdown("<h1 style='text-align: center;'>⚙️ Admin - Mercado de Transferências</h1><hr>", unsafe_allow_html=True)
 
@@ -28,6 +35,10 @@ with st.form("form_mercado"):
     ])
     overall = st.number_input("Overall", min_value=1, max_value=99, step=1)
     valor = st.number_input("Valor (R$)", min_value=100000, step=50000)
+
+    time_origem = st.text_input("Time de Origem").strip()
+    nacionalidade = st.text_input("Nacionalidade").strip()
+
     botao = st.form_submit_button("Adicionar ao Mercado")
 
 # 💾 Envia jogador ao Firestore
@@ -36,13 +47,16 @@ if botao:
         st.warning("Digite o nome do jogador.")
     else:
         try:
-            db.collection("mercado_transferencias").add({
+            jogador = {
                 "nome": nome,
-                "posição": posicao,
+                "posicao": posicao,
                 "overall": overall,
-                "valor": valor
-            })
+                "valor": valor,
+                "time_origem": time_origem if time_origem else "Desconhecido",
+                "nacionalidade": nacionalidade if nacionalidade else "Desconhecida"
+            }
+            db.collection("mercado_transferencias").add(jogador)
             st.success(f"✅ {nome} foi adicionado ao mercado!")
-            st.experimental_rerun()
+            st.rerun()
         except Exception as e:
             st.error(f"Erro ao adicionar jogador: {e}")
