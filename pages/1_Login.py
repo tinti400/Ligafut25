@@ -4,7 +4,7 @@ from google.cloud import firestore
 
 st.set_page_config(page_title="Login - LigaFut", page_icon="🔐", layout="centered")
 
-# 🔐 Conecta Firebase
+# 🔐 Firebase
 if "firebase" not in st.session_state:
     try:
         cred = service_account.Credentials.from_service_account_info(st.secrets["firebase"])
@@ -16,25 +16,15 @@ if "firebase" not in st.session_state:
 else:
     db = st.session_state["firebase"]
 
-st.markdown("<h2 style='text-align: center;'>🏟️ LigaFut - Login</h2>", unsafe_allow_html=True)
+st.markdown("<h2 style='text-align: center;'>🔐 Login - LigaFut</h2>", unsafe_allow_html=True)
 st.markdown("<br>", unsafe_allow_html=True)
 
-# ✅ SE JÁ ESTIVER LOGADO → mostra painel direto
+# ✅ Usuário já logado
 if "usuario" in st.session_state and st.session_state["usuario"]:
-    st.success(f"✅ Bem-vindo, {st.session_state['usuario']}!")
-
-    st.markdown("### 🏁 Painel Inicial")
-    st.info("Use o menu lateral para navegar entre as seções da LigaFut.")
-    st.markdown("⚽ Você já pode acessar sua equipe, transferências, classificação e muito mais!")
-
-    st.markdown("---")
-    if st.button("🚪 Sair"):
-        st.session_state.clear()
-        st.rerun()
-
+    st.success(f"✅ Logado como: {st.session_state['usuario']}")
+    st.info("Use o menu lateral para acessar seu time.")
     st.stop()
 
-# ✅ FORMULÁRIO DE LOGIN
 with st.form("login_form"):
     usuario = st.text_input("Usuário (e-mail)")
     senha = st.text_input("Senha", type="password")
@@ -53,6 +43,21 @@ if botao_login:
                 dados = usuario_encontrado.to_dict()
                 st.session_state["usuario"] = dados.get("usuario")
                 st.session_state["usuario_id"] = usuario_encontrado.id
+
+                # 🔎 Verifica o time vinculado a esse usuário
+                id_time = dados.get("id_time")
+                if not id_time:
+                    st.error("⚠️ Nenhum time vinculado a este usuário.")
+                    st.stop()
+
+                # 🔎 Busca o nome do time
+                time_doc = db.collection("times").document(id_time).get()
+                if not time_doc.exists:
+                    st.error("⚠️ Time vinculado não encontrado no banco de dados.")
+                    st.stop()
+
+                st.session_state["id_time"] = id_time
+                st.session_state["nome_time"] = time_doc.to_dict().get("nome", "Sem Nome")
 
                 st.success("✅ Login realizado com sucesso!")
                 st.rerun()
