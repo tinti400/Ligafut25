@@ -2,6 +2,7 @@ import streamlit as st
 from google.oauth2 import service_account
 from google.cloud import firestore
 from utils import verificar_login
+import pandas as pd
 
 st.set_page_config(page_title="📋 Elenco", layout="wide")
 
@@ -17,10 +18,10 @@ if "firebase" not in st.session_state:
 else:
     db = st.session_state["firebase"]
 
-# ✅ Verifica login com segurança
+# ✅ Verifica login
 verificar_login()
 
-# ⚠️ Garante que id_time e nome_time existem
+# ✅ Garante que sessão tenha time
 if "id_time" not in st.session_state or "nome_time" not in st.session_state:
     st.error("⚠️ Informações do time não encontradas. Faça login novamente.")
     st.stop()
@@ -31,27 +32,30 @@ nome_time = st.session_state["nome_time"]
 st.title("📋 Elenco do Clube")
 st.markdown(f"### 🏟️ Time: **{nome_time}**")
 
-# 🔎 Busca elenco do time no Firestore
+# 🔍 Busca elenco do time
 elenco_ref = db.collection("times").document(id_time).collection("elenco").stream()
-elenco = [doc.to_dict() | {"id_doc": doc.id} for doc in elenco_ref]
+
+elenco = []
+for doc in elenco_ref:
+    jogador = doc.to_dict()
+    jogador["id_doc"] = doc.id
+    jogador["posicao"] = jogador.get("posicao", "Desconhecido")
+    jogador["nome"] = jogador.get("nome", "Desconhecido")
+    jogador["overall"] = jogador.get("overall", 0)
+    jogador["valor"] = jogador.get("valor", 0)
+    elenco.append(jogador)
 
 if not elenco:
     st.info("📭 Nenhum jogador no elenco atualmente.")
     st.stop()
 
-# 📊 Exibe elenco em formato de tabela
-import pandas as pd
-
+# 📊 Exibe elenco formatado
 df = pd.DataFrame(elenco)
 
-# Ordena por overall
 df = df.sort_values(by="overall", ascending=False)
-
-# Formata valor com R$
 df["valor"] = pd.to_numeric(df["valor"], errors="coerce")
 df["valor_formatado"] = df["valor"].apply(lambda x: f"R$ {x:,.0f}".replace(",", ".") if pd.notnull(x) else "N/A")
 
-# Define colunas a exibir
 df = df[["posicao", "nome", "overall", "valor_formatado"]]
 df.columns = ["Posição", "Nome", "Overall", "Valor"]
 
