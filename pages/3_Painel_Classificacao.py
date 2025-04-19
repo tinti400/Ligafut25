@@ -100,7 +100,7 @@ with col_btn1:
     if st.button("⬅ Rodada anterior") and rodada_atual_idx > 0:
         rodada_atual_idx -= 1
 with col_btn2:
-    if st.button("Próxima rodada ➡") and rodada_atual_idx < rodada_total - 1:
+    if st.button("Próxima rodada ➔") and rodada_atual_idx < rodada_total - 1:
         rodada_atual_idx += 1
 
 st.session_state["rodada_atual_idx"] = rodada_atual_idx
@@ -125,21 +125,29 @@ for idx, jogo in enumerate(jogos):
     col1, col2, col3, col4, col5, col6 = st.columns([3, 1, 1, 1, 3, 1])
     with col1:
         st.markdown(f"<span style='font-size:15px'>{nome_mandante}</span>", unsafe_allow_html=True)
+
     with col2:
-        gm = st.number_input(" ", min_value=0, step=1, value=gm_valor if gm_valor is not None else None, key=f"{rodada_doc.id}_{idx}_gm")
+        gm_input = st.text_input(" ", value=str(gm_valor) if gm_valor is not None else "", key=f"{rodada_doc.id}_{idx}_gm")
     with col3:
         st.markdown("x")
     with col4:
-        gv = st.number_input("  ", min_value=0, step=1, value=gv_valor if gv_valor is not None else None, key=f"{rodada_doc.id}_{idx}_gv")
+        gv_input = st.text_input("  ", value=str(gv_valor) if gv_valor is not None else "", key=f"{rodada_doc.id}_{idx}_gv")
     with col5:
         st.markdown(f"<span style='font-size:15px'>{nome_visitante}</span>", unsafe_allow_html=True)
     with col6:
-        if st.button("📅", key=f"salvar_{rodada_doc.id}_{idx}"):
+        if st.button("🗕", key=f"salvar_{rodada_doc.id}_{idx}"):
             try:
-                jogos[idx]["gols_mandante"] = gm
-                jogos[idx]["gols_visitante"] = gv
-                rodada_doc.reference.update({"jogos": jogos})
-                st.success("✅ Resultado salvo com sucesso!")
-                st.rerun()
+                # Converte e salva apenas se os dois campos forem números
+                if gm_input.strip().isdigit() and gv_input.strip().isdigit():
+                    gm = int(gm_input.strip())
+                    gv = int(gv_input.strip())
+                    jogos[idx]["gols_mandante"] = gm
+                    jogos[idx]["gols_visitante"] = gv
+                    rodada_doc.reference.update({"jogos": jogos})
+                    st.success("✅ Resultado salvo com sucesso!")
+                    st.rerun()
+                else:
+                    st.warning("⚠️ Digite os dois placares corretamente antes de salvar.")
             except Exception as e:
                 st.error(f"Erro ao salvar: {e}")
+
