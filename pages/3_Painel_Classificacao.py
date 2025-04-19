@@ -5,7 +5,7 @@ import pandas as pd
 
 st.set_page_config(page_title="Rodadas e Classificação - LigaFut", layout="wide")
 
-# Inicializa Firebase
+# 🔐 Firebase
 if "firebase" not in st.session_state:
     try:
         cred = service_account.Credentials.from_service_account_info(st.secrets["firebase"])
@@ -17,6 +17,15 @@ if "firebase" not in st.session_state:
 else:
     db = st.session_state["firebase"]
 
+# ✅ Verifica login
+if "usuario_id" not in st.session_state or not st.session_state["usuario_id"]:
+    st.warning("Você precisa estar logado para acessar o sistema.")
+    st.stop()
+
+id_usuario = st.session_state["usuario_id"]
+admin_ref = db.collection("admins").document(id_usuario).get()
+eh_admin = admin_ref.exists
+
 # Carrega times
 try:
     times_ref = db.collection("times").stream()
@@ -25,13 +34,16 @@ except Exception as e:
     st.error(f"Erro ao buscar times: {e}")
     st.stop()
 
-# Classificacao no topo
+# Classificação
 st.markdown("<h2 style='text-align: center;'>📊 Classificação Atualizada</h2>", unsafe_allow_html=True)
 
-tabela = {tid: {
-    "Time": nome,
-    "P": 0, "J": 0, "V": 0, "E": 0, "D": 0, "GP": 0, "GC": 0, "SG": 0
-} for tid, nome in times_dict.items()}
+tabela = {
+    tid: {
+        "Time": nome,
+        "P": 0, "J": 0, "V": 0, "E": 0, "D": 0, "GP": 0, "GC": 0, "SG": 0
+    }
+    for tid, nome in times_dict.items()
+}
 
 try:
     rodadas_ref = db.collection_group("rodadas_divisao_1").stream()
@@ -40,7 +52,7 @@ except Exception as e:
     st.error(f"Erro ao buscar rodadas: {e}")
     st.stop()
 
-# Processa classificacao apenas com jogos que possuem gols salvos
+# Calcula classificação
 for rodada_doc in rodadas:
     jogos = rodada_doc.to_dict().get("jogos", [])
     for jogo in jogos:
@@ -70,7 +82,7 @@ for rodada_doc in rodadas:
                 tabela[mandante]["E"] += 1
                 tabela[visitante]["E"] += 1
 
-# Calcula pontos
+# Pontuação e SG
 for t in tabela.values():
     t["P"] = t["V"] * 3 + t["E"]
     t["SG"] = t["GP"] - t["GC"]
@@ -100,12 +112,12 @@ with col_btn1:
     if st.button("⬅ Rodada anterior") and rodada_atual_idx > 0:
         rodada_atual_idx -= 1
 with col_btn2:
-    if st.button("Próxima rodada ➔") and rodada_atual_idx < rodada_total - 1:
+    if st.button("Próxima rodada ➡") and rodada_atual_idx < rodada_total - 1:
         rodada_atual_idx += 1
 
 st.session_state["rodada_atual_idx"] = rodada_atual_idx
 
-# Exibe rodada
+# Exibe jogos
 rodada_doc = rodadas[rodada_atual_idx]
 rodada_data = rodada_doc.to_dict()
 numero_rodada = rodada_data.get("numero", "?")
@@ -125,29 +137,39 @@ for idx, jogo in enumerate(jogos):
     col1, col2, col3, col4, col5, col6 = st.columns([3, 1, 1, 1, 3, 1])
     with col1:
         st.markdown(f"<span style='font-size:15px'>{nome_mandante}</span>", unsafe_allow_html=True)
-
     with col2:
-        gm_input = st.text_input(" ", value=str(gm_valor) if gm_valor is not None else "", key=f"{rodada_doc.id}_{idx}_gm")
+        gm = st.number_input(" ", min_value=0, step=1, value=gm_valor if gm_valor is not None else None, key=f"{rodada_doc.id}_{idx}_gm")
     with col3:
         st.markdown("x")
     with col4:
-        gv_input = st.text_input("  ", value=str(gv_valor) if gv_valor is not None else "", key=f"{rodada_doc.id}_{idx}_gv")
+        gv = st.number_input("  ", min_value=0, step=1, value=gv_valor if gv_valor is not None else None, key=f"{rodada_doc.id}_{idx}_gv")
     with col5:
         st.markdown(f"<span style='font-size:15px'>{nome_visitante}</span>", unsafe_allow_html=True)
     with col6:
-        if st.button("🗕", key=f"salvar_{rodada_doc.id}_{idx}"):
+        if st.button("📅", key=f"salvar_{rodada_doc.id}_{idx}"):
             try:
-                # Converte e salva apenas se os dois campos forem números
-                if gm_input.strip().isdigit() and gv_input.strip().isdigit():
-                    gm = int(gm_input.strip())
-                    gv = int(gv_input.strip())
-                    jogos[idx]["gols_mandante"] = gm
-                    jogos[idx]["gols_visitante"] = gv
-                    rodada_doc.reference.update({"jogos": jogos})
-                    st.success("✅ Resultado salvo com sucesso!")
-                    st.rerun()
-                else:
-                    st.warning("⚠️ Digite os dois placares corretamente antes de salvar.")
+                jogos[idx]["gols_mandante"] = gm
+                jogos[idx]["gols_visitante"] = gv
+                rodada_doc.reference.update({"jogos": jogos})
+                st.success("✅ Resultado salvo com sucesso!")
+                st.rerun()
             except Exception as e:
                 st.error(f"Erro ao salvar: {e}")
+
+# ✅ BOTÃO PARA ZERAR TODOS OS RESULTADOS (SOMENTE ADMIN)
+if eh_admin:
+    st.markdown("---")
+    st.warning("⚠️ Essa ação irá zerar todos os resultados das rodadas. Use com cautela.")
+    if st.button("🧹 Zerar Todos os Jogos"):
+        try:
+            for rodada in rodadas:
+                jogos = rodada.to_dict().get("jogos", [])
+                for jogo in jogos:
+                    jogo["gols_mandante"] = None
+                    jogo["gols_visitante"] = None
+                rodada.reference.update({"jogos": jogos})
+            st.success("✅ Todos os resultados foram zerados com sucesso!")
+            st.rerun()
+        except Exception as e:
+            st.error(f"Erro ao zerar resultados: {e}")
 
