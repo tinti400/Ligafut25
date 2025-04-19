@@ -1,7 +1,7 @@
 import streamlit as st
 from google.oauth2 import service_account
 from google.cloud import firestore
-from utils import verificar_login
+from utils import verificar_login, registrar_movimentacao
 import pandas as pd
 
 st.set_page_config(page_title="📋 Elenco", layout="wide")
@@ -32,6 +32,13 @@ nome_time = st.session_state["nome_time"]
 st.title("📋 Elenco do Clube")
 st.markdown(f"### 🏟️ Time: **{nome_time}**")
 
+# 🔄 Abas
+aba = st.tabs(["📋 Lista", "🧠 Formação Tática"])
+
+# 🔄 Verifica se o mercado está aberto
+mercado_doc = db.collection("configuracoes").document("mercado").get()
+mercado_aberto = mercado_doc.to_dict().get("aberto", False) if mercado_doc.exists else False
+
 # 🔍 Busca elenco
 elenco_ref = db.collection("times").document(id_time).collection("elenco").stream()
 elenco = []
@@ -47,9 +54,6 @@ for doc in elenco_ref:
 if not elenco:
     st.info("📭 Nenhum jogador no elenco atualmente.")
     st.stop()
-
-# 🔄 Abas
-aba = st.tabs(["📋 Lista", "🧠 Formação Tática"])
 
 # =========================
 # 📋 ABA 1 - LISTA
@@ -86,14 +90,49 @@ with aba[0]:
     elif ordenacao == "Menor Valor":
         filtrado.sort(key=lambda x: x.get("valor", 0))
 
-    df = pd.DataFrame(filtrado)
-    if df.empty:
+    if not filtrado:
         st.warning("Nenhum jogador encontrado com os filtros selecionados.")
     else:
-        df["valor_formatado"] = df["valor"].apply(lambda x: f"R$ {x:,.0f}".replace(",", ".") if pd.notnull(x) else "N/A")
-        df = df[["posicao", "nome", "overall", "valor_formatado"]]
-        df.columns = ["Posição", "Nome", "Overall", "Valor"]
-        st.dataframe(df, use_container_width=True)
+        for jogador in filtrado:
+            nome = jogador["nome"]
+            posicao = jogador["posicao"]
+            overall = jogador["overall"]
+            valor = jogador["valor"]
+            valor_formatado = f"R$ {valor:,.0f}".replace(",", ".")
+            id_doc = jogador["id_doc"]
+
+            col1, col2, col3, col4, col5 = st.columns([3, 2, 2, 2, 2])
+            with col1:
+                st.markdown(f"**👤 {nome}** ({posicao})")
+            with col2:
+                st.markdown(f"⭐ {overall}")
+            with col3:
+                st.markdown(f"💰 {valor_formatado}")
+            with col4:
+                if mercado_aberto:
+                    if st.button("💸 Vender", key=f"vender_{id_doc}"):
+                        try:
+                            db.collection("times").document(id_time).collection("elenco").document(id_doc).delete()
+                            db.collection("mercado_transferencias").add({
+                                "nome": nome,
+                                "posicao": posicao,
+                                "overall": overall,
+                                "valor": valor,
+                                "time_origem": nome_time,
+                                "nacionalidade": jogador.get("nacionalidade", "N/A")
+                            })
+                            valor_recebido = int(valor * 0.7)
+                            time_doc = db.collection("times").document(id_time).get()
+                            saldo_atual = time_doc.to_dict().get("saldo", 0)
+                            novo_saldo = saldo_atual + valor_recebido
+                            db.collection("times").document(id_time).update({"saldo": novo_saldo})
+                            registrar_movimentacao(db, id_time, "entrada", "Venda para o mercado", valor_recebido, jogador=nome)
+                            st.success(f"{nome} vendido por R$ {valor_recebido:,.0f}".replace(",", "."))
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Erro ao vender jogador: {e}")
+                else:
+                    st.markdown("🔒 Mercado fechado")
 
 # =========================
 # 🧠 ABA 2 - TÁTICA
@@ -101,7 +140,6 @@ with aba[0]:
 with aba[1]:
     st.markdown("### 🧠 Formação Tática")
 
-    # Posições da formação padrão 4-3-3
     posicoes_taticas = [
         "GL", "LD", "ZAG1", "ZAG2", "LE",
         "VOL", "MC", "ME",
@@ -109,8 +147,6 @@ with aba[1]:
     ]
 
     nomes_jogadores = [j["nome"] for j in elenco]
-
-    # 🔄 Carrega formação salva se existir
     formacao_salva = db.collection("times").document(id_time).get().to_dict().get("formacao", {})
     formacao = {}
 
