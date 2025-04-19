@@ -2,10 +2,11 @@ import streamlit as st
 from google.oauth2 import service_account
 import google.cloud.firestore as gc_firestore
 from datetime import datetime, timedelta
+from utils import verificar_login
 
 st.set_page_config(page_title="Admin - Leilão", layout="wide")
 
-# Inicializa Firebase
+# 🔐 Firebase
 if "firebase" not in st.session_state:
     try:
         cred = service_account.Credentials.from_service_account_info(st.secrets["firebase"])
@@ -17,6 +18,24 @@ if "firebase" not in st.session_state:
 else:
     db = st.session_state["firebase"]
 
+# ✅ Verifica login
+verificar_login()
+
+# 👑 Verifica se é admin
+email_usuario = st.session_state.get("usuario", "")
+
+if not email_usuario or "/" in email_usuario:
+    st.error("⚠️ E-mail inválido para verificação de admin.")
+    st.stop()
+
+admin_ref = db.collection("admins").document(email_usuario).get()
+eh_admin = admin_ref.exists
+
+if not eh_admin:
+    st.warning("🔒 Acesso permitido apenas para administradores.")
+    st.stop()
+
+# 🧾 Título
 st.markdown("<h1 style='text-align: center;'>🧑‍⚖️ Administração de Leilão</h1><hr>", unsafe_allow_html=True)
 
 # 📝 Formulário para criar leilão
