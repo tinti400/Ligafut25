@@ -20,8 +20,13 @@ else:
 # ✅ Verifica login
 verificar_login()
 
-# ✅ Verifica se é admin por e-mail
+# ✅ Verifica se é admin por e-mail com segurança
 email_usuario = st.session_state.get("usuario", "")
+
+if not email_usuario or "/" in email_usuario:
+    st.error("⚠️ E-mail inválido para verificação de admin.")
+    st.stop()
+
 admin_ref = db.collection("admins").document(email_usuario).get()
 eh_admin = admin_ref.exists
 
