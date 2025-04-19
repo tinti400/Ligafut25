@@ -40,16 +40,26 @@ for mov in movimentacoes:
 df = pd.DataFrame(movimentacoes)
 
 if not df.empty and all(col in df.columns for col in ["tipo", "jogador", "valor"]):
-    df["valor"] = df["valor"].apply(lambda x: f"R$ {x:,.0f}".replace(",", "."))
+    # Garante que valor seja numérico
+    df["valor"] = pd.to_numeric(df["valor"], errors="coerce")
+    df["valor_formatado"] = df["valor"].apply(lambda x: f"R$ {x:,.0f}".replace(",", ".") if pd.notnull(x) else "N/A")
+
+    # Trata a data corretamente
     df["data"] = pd.to_datetime(df["data"], errors="coerce")
-    df = df[["data", "tipo", "jogador", "valor", "descricao"] if "descricao" in df.columns else ["data", "tipo", "jogador", "valor"]]
+
+    # Reorganiza e renomeia colunas
+    colunas = ["data", "tipo", "jogador", "valor_formatado"]
+    if "descricao" in df.columns:
+        colunas.append("descricao")
+    df = df[colunas]
     df = df.rename(columns={
         "data": "Data",
         "tipo": "Tipo",
         "jogador": "Jogador",
-        "valor": "Valor",
+        "valor_formatado": "Valor",
         "descricao": "Descrição"
     })
+
     st.dataframe(df, use_container_width=True)
 else:
-    st.info("⚠️ Nenhuma movimentação financeira registrada.")
+    st.info("⚠️ Nenhuma movimentação financeira registrada ou dados incompletos.")
