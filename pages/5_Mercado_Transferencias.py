@@ -31,6 +31,24 @@ nome_time = st.session_state.nome_time
 admin_ref = db.collection("admins").document(id_usuario).get()
 eh_admin = admin_ref.exists
 
+# ⚙️ Controle de mercado (admin)
+mercado_cfg_ref = db.collection("configuracoes").document("mercado")
+mercado_doc = mercado_cfg_ref.get()
+mercado_aberto = mercado_doc.to_dict().get("aberto", True) if mercado_doc.exists else True
+
+if eh_admin:
+    st.sidebar.markdown("## ⚙️ Admin - Controle do Mercado")
+    if mercado_aberto:
+        if st.sidebar.button("🔒 Fechar Mercado"):
+            mercado_cfg_ref.set({"aberto": False}, merge=True)
+            st.success("✅ Mercado fechado com sucesso.")
+            st.rerun()
+    else:
+        if st.sidebar.button("🔓 Abrir Mercado"):
+            mercado_cfg_ref.set({"aberto": True}, merge=True)
+            st.success("✅ Mercado aberto com sucesso.")
+            st.rerun()
+
 # 💵 Saldo do time
 saldo_time = db.collection("times").document(id_time).get().to_dict().get("saldo", 0)
 st.title("Mercado de Transferências")
@@ -116,7 +134,9 @@ else:
             st.write(nacionalidade)
         with col7:
             if st.button("Comprar", key=f"comprar_{j['id_doc']}"):
-                if saldo_time < valor:
+                if not mercado_aberto:
+                    st.error("❌ Desculpe, o mercado está fechado no momento.")
+                elif saldo_time < valor:
                     st.error("Saldo insuficiente.")
                 else:
                     try:
@@ -157,4 +177,6 @@ with st.expander("Ver histórico de transferências"):
         df_hist["valor"] = df_hist["valor"].apply(lambda x: f"R$ {x:,.0f}".replace(",", ".")) if not df_hist.empty else "-"
         df_hist.columns = ["Tipo", "Jogador", "Valor"]
         st.dataframe(df_hist, use_container_width=True)
+
+
 
