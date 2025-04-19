@@ -65,6 +65,23 @@ with col2:
 with col3:
     filtro_valor = st.slider("Valor máximo (R$)", 0, 300_000_000, 300_000_000, step=1_000_000)
 
+# ⚠️ Resetar página caso filtros mudem
+filtros_aplicados = st.session_state.get("filtros_aplicados", {"nome": "", "posicao": "Todas", "valor": 300_000_000})
+
+mudou_filtro = (
+    filtro_nome != filtros_aplicados["nome"] or
+    filtro_posicao != filtros_aplicados["posicao"] or
+    filtro_valor != filtros_aplicados["valor"]
+)
+
+if mudou_filtro:
+    st.session_state["pagina_mercado"] = 1
+    st.session_state["filtros_aplicados"] = {
+        "nome": filtro_nome,
+        "posicao": filtro_posicao,
+        "valor": filtro_valor
+    }
+
 # 📦 Carrega jogadores do mercado
 mercado_ref = db.collection("mercado_transferencias").stream()
 todos_jogadores = []
@@ -85,13 +102,40 @@ for j in todos_jogadores:
         continue
     jogadores_filtrados.append(j)
 
-st.markdown(f"#### 🎯 Resultados: {len(jogadores_filtrados)} jogadores disponíveis")
+# 🔢 Paginação
+if "pagina_mercado" not in st.session_state:
+    st.session_state["pagina_mercado"] = 1
+
+total_jogadores = len(jogadores_filtrados)
+por_pagina = 15
+total_paginas = max(1, (total_jogadores + por_pagina - 1) // por_pagina)
+pagina = st.session_state["pagina_mercado"]
+pagina = max(1, min(pagina, total_paginas))
+
+inicio = (pagina - 1) * por_pagina
+fim = inicio + por_pagina
+jogadores_pagina = jogadores_filtrados[inicio:fim]
+
+# 🔄 Navegação entre páginas
+col_nav1, col_nav2, col_nav3 = st.columns([1, 2, 1])
+with col_nav1:
+    if st.button("⏪ Anterior", disabled=pagina <= 1):
+        st.session_state["pagina_mercado"] -= 1
+        st.rerun()
+
+with col_nav2:
+    st.markdown(f"<p style='text-align: center;'>Página {pagina} de {total_paginas}</p>", unsafe_allow_html=True)
+
+with col_nav3:
+    if st.button("⏩ Próxima", disabled=pagina >= total_paginas):
+        st.session_state["pagina_mercado"] += 1
+        st.rerun()
 
 # 📋 Exibição
-if not jogadores_filtrados:
+if not jogadores_pagina:
     st.info("Nenhum jogador disponível com os filtros selecionados.")
 else:
-    for j in jogadores_filtrados:
+    for j in jogadores_pagina:
         nome = j.get("nome", "Desconhecido")
         posicao = j.get("posicao", "Desconhecida")
         overall = j.get("overall", "N/A")
