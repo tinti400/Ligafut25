@@ -17,10 +17,14 @@ if "firebase" not in st.session_state:
 else:
     db = st.session_state["firebase"]
 
-# 🔐 Verifica login
+# ✅ Verifica login com segurança
 verificar_login()
 
-# 📌 Dados do time logado
+# ⚠️ Garante que id_time e nome_time existem
+if "id_time" not in st.session_state or "nome_time" not in st.session_state:
+    st.error("⚠️ Informações do time não encontradas. Faça login novamente.")
+    st.stop()
+
 id_time = st.session_state["id_time"]
 nome_time = st.session_state["nome_time"]
 
