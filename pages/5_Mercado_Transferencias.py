@@ -28,11 +28,11 @@ id_time = st.session_state.id_time
 nome_time = st.session_state.nome_time
 email_usuario = st.session_state.get("usuario", "")
 
-# 👑 Verifica se é admin por e-mail
+# 👑 Verifica se é admin
 admin_ref = db.collection("admins").document(email_usuario).get()
 eh_admin = admin_ref.exists
 
-# ⚙️ Controle de mercado (admin)
+# ⚙️ Configuração do mercado
 mercado_cfg_ref = db.collection("configuracoes").document("mercado")
 mercado_doc = mercado_cfg_ref.get()
 mercado_aberto = mercado_doc.to_dict().get("aberto", True) if mercado_doc.exists else True
@@ -57,25 +57,25 @@ st.markdown(f"### 💰 Saldo atual: **R$ {saldo_time:,.0f}**".replace(",", "."))
 
 # 🔍 Filtros
 st.markdown("### 🔍 Filtros de Pesquisa")
-col1, col2, col3, col4 = st.columns([3, 2, 3, 2])
+col1, col2, col3, col4 = st.columns([3, 3, 3, 3])
 with col1:
     filtro_nome = st.text_input("Nome do jogador").strip().lower()
 with col2:
-    filtro_posicao = st.selectbox("Posição", ["Todas", "GL", "LD", "ZAG", "LE", "VOL", "MC", "MD", "ME", "PD", "PE", "SA", "CA"])
+    filtro_posicao = st.selectbox("Posição", [
+        "Todas",
+        "Goleiro (GL)", "Lateral direito (LD)", "Zagueiro (ZAG)", "Lateral esquerdo (LE)",
+        "Volante (VOL)", "Meio campo (MC)", "Meia direita (MD)", "Meia esquerda (ME)",
+        "Ponta direita (PD)", "Ponta esquerda (PE)", "Segundo atacante (SA)", "Centroavante (CA)"
+    ])
 with col3:
     filtro_valor = st.slider("Valor máximo (R$)", 0, 300_000_000, 300_000_000, step=1_000_000)
 with col4:
     filtro_ordenacao = st.selectbox("Ordenar por", [
-        "Padrão",
-        "Maior Overall",
-        "Menor Overall",
-        "Maior Valor",
-        "Menor Valor"
+        "Padrão", "Maior Overall", "Menor Overall", "Maior Valor", "Menor Valor"
     ])
 
-# ✅ Corrige problema de KeyError na primeira execução
+# Corrige erro na primeira execução
 filtros_aplicados = st.session_state.get("filtros_aplicados", {})
-
 filtro_nome_old = filtros_aplicados.get("nome", "")
 filtro_posicao_old = filtros_aplicados.get("posicao", "Todas")
 filtro_valor_old = filtros_aplicados.get("valor", 300_000_000)
@@ -97,7 +97,7 @@ if mudou_filtro:
         "ordenacao": filtro_ordenacao
     }
 
-# 📦 Carrega jogadores do mercado
+# 🔍 Busca jogadores
 mercado_ref = db.collection("mercado_transferencias").stream()
 todos_jogadores = []
 for doc in mercado_ref:
@@ -141,7 +141,7 @@ inicio = (pagina - 1) * por_pagina
 fim = inicio + por_pagina
 jogadores_pagina = jogadores_filtrados[inicio:fim]
 
-# 🔄 Navegação entre páginas
+# 🔄 Navegação
 col_nav1, col_nav2, col_nav3 = st.columns([1, 2, 1])
 with col_nav1:
     if st.button("⏪ Anterior", disabled=pagina <= 1):
@@ -201,7 +201,6 @@ else:
                             st.error(f"Erro na compra: {e}")
             else:
                 st.markdown("🔒 Mercado Fechado")
-
         with col5:
             if eh_admin:
                 if st.button("🗑️ Excluir", key=f"excluir_{j['id_doc']}"):
