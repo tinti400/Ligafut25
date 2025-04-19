@@ -94,40 +94,53 @@ if not jogadores_exibidos:
     st.info("Nenhum jogador disponível com os filtros selecionados.")
 else:
     for j in jogadores_exibidos:
-        col1, col2, col3, col4, col5, col6 = st.columns([2, 2, 1, 2, 1, 1])
+        nome = j.get("nome", "Desconhecido")
+        posicao = j.get("posicao", "Desconhecida")
+        overall = j.get("overall", "N/A")
+        valor = j.get("valor", 0)
+        time_origem = j.get("time_origem", "N/A")
+        nacionalidade = j.get("nacionalidade", "N/A")
+
+        col1, col2, col3, col4, col5, col6, col7, col8 = st.columns([2, 2, 1, 2, 2, 1, 1, 1])
         with col1:
-            st.write(j["nome"])
+            st.write(nome)
         with col2:
-            st.write(j.get("posicao", "Desconhecida"))
+            st.write(posicao)
         with col3:
-            st.write(j.get("overall", "N/A"))
+            st.write(overall)
         with col4:
-            st.write(f"R$ {j['valor']:,.0f}".replace(",", "."))
+            st.write(f"R$ {valor:,.0f}".replace(",", "."))
         with col5:
+            st.write(time_origem)
+        with col6:
+            st.write(nacionalidade)
+        with col7:
             if st.button("Comprar", key=f"comprar_{j['id_doc']}"):
-                if saldo_time < j["valor"]:
+                if saldo_time < valor:
                     st.error("Saldo insuficiente.")
                 else:
                     try:
                         db.collection("mercado_transferencias").document(j["id_doc"]).delete()
                         db.collection("times").document(id_time).collection("elenco").add({
-                            "nome": j["nome"],
-                            "posicao": j.get("posicao", "Desconhecida"),
-                            "overall": j.get("overall", 0),
-                            "valor": j["valor"]
+                            "nome": nome,
+                            "posicao": posicao,
+                            "overall": overall,
+                            "valor": valor,
+                            "time_origem": time_origem,
+                            "nacionalidade": nacionalidade
                         })
-                        db.collection("times").document(id_time).update({"saldo": saldo_time - j["valor"]})
-                        registrar_movimentacao(db, id_time, j["nome"], "Compra", "Mercado", j["valor"])
-                        st.success(f"{j['nome']} comprado com sucesso!")
+                        db.collection("times").document(id_time).update({"saldo": saldo_time - valor})
+                        registrar_movimentacao(db, id_time, nome, "Compra", "Mercado", valor)
+                        st.success(f"{nome} comprado com sucesso!")
                         st.rerun()
                     except Exception as e:
                         st.error(f"Erro na compra: {e}")
-        with col6:
+        with col8:
             if eh_admin:
                 if st.button("Excluir", key=f"excluir_{j['id_doc']}"):
                     try:
                         db.collection("mercado_transferencias").document(j["id_doc"]).delete()
-                        st.success(f"{j['nome']} removido do mercado.")
+                        st.success(f"{nome} removido do mercado.")
                         st.rerun()
                     except Exception as e:
                         st.error(f"Erro ao excluir: {e}")
@@ -144,3 +157,4 @@ with st.expander("Ver histórico de transferências"):
         df_hist["valor"] = df_hist["valor"].apply(lambda x: f"R$ {x:,.0f}".replace(",", ".")) if not df_hist.empty else "-"
         df_hist.columns = ["Tipo", "Jogador", "Valor"]
         st.dataframe(df_hist, use_container_width=True)
+
