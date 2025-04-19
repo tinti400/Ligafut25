@@ -17,11 +17,12 @@ if "firebase" not in st.session_state:
 else:
     db = st.session_state["firebase"]
 
-# ✅ Verifica login e permissão de administrador
+# ✅ Verifica login
 verificar_login()
 
-id_usuario = st.session_state.get("usuario_id", "")
-admin_ref = db.collection("admins").document(id_usuario).get()
+# ✅ Verifica se é admin por e-mail
+email_usuario = st.session_state.get("usuario", "")
+admin_ref = db.collection("admins").document(email_usuario).get()
 eh_admin = admin_ref.exists
 
 if not eh_admin:
