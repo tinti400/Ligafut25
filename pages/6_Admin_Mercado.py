@@ -41,7 +41,7 @@ mercado_aberto = config_doc.to_dict().get("aberto", False) if config_doc.exists 
 st.markdown(f"### 🛒 Status atual do mercado: **{'Aberto' if mercado_aberto else 'Fechado'}**")
 
 # 🔘 Botões de controle
-col1, col2 = st.columns(2)
+col1, col2, col3 = st.columns([2, 2, 2])
 with col1:
     if st.button("🟢 Abrir Mercado"):
         config_ref.set({"aberto": True}, merge=True)
@@ -53,6 +53,17 @@ with col2:
         config_ref.set({"aberto": False}, merge=True)
         st.success("✅ Mercado fechado com sucesso!")
         st.rerun()
+
+with col3:
+    if st.button("🧹 Limpar Mercado"):
+        try:
+            docs = db.collection("mercado_transferencias").stream()
+            for doc in docs:
+                doc.reference.delete()
+            st.success("🧹 Todos os jogadores foram removidos do mercado!")
+            st.rerun()
+        except Exception as e:
+            st.error(f"Erro ao limpar mercado: {e}")
 
 # 📝 Cadastro de jogador no mercado
 st.markdown("---")
