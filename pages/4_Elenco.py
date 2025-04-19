@@ -1,8 +1,8 @@
 import streamlit as st
-import pandas as pd
 from google.oauth2 import service_account
 from google.cloud import firestore
-from utils import verificar_login, registrar_movimentacao
+from utils import verificar_login
+import pandas as pd
 
 st.set_page_config(page_title="📋 Elenco", layout="wide")
 
@@ -21,6 +21,7 @@ else:
 # ✅ Verifica login
 verificar_login()
 
+# ✅ Garante que sessão tenha time
 if "id_time" not in st.session_state or "nome_time" not in st.session_state:
     st.error("⚠️ Informações do time não encontradas. Faça login novamente.")
     st.stop()
@@ -31,13 +32,8 @@ nome_time = st.session_state["nome_time"]
 st.title("📋 Elenco do Clube")
 st.markdown(f"### 🏟️ Time: **{nome_time}**")
 
-# 🔓 Verifica se o mercado está aberto
-config_ref = db.collection("configuracoes").document("mercado").get()
-mercado_aberto = config_ref.to_dict().get("aberto", False) if config_ref.exists else False
-
 # 🔍 Busca elenco
 elenco_ref = db.collection("times").document(id_time).collection("elenco").stream()
-
 elenco = []
 for doc in elenco_ref:
     jogador = doc.to_dict()
@@ -52,52 +48,85 @@ if not elenco:
     st.info("📭 Nenhum jogador no elenco atualmente.")
     st.stop()
 
-# 🔁 Exibe jogador por jogador com botão de ação
-for jogador in sorted(elenco, key=lambda x: x["overall"], reverse=True):
-    col1, col2, col3, col4, col5 = st.columns([2, 4, 2, 2, 2])
+# 🔄 Abas
+aba = st.tabs(["📋 Lista", "🧠 Formação Tática"])
+
+# =========================
+# 📋 ABA 1 - LISTA
+# =========================
+with aba[0]:
+    st.markdown("### 📋 Lista de Jogadores")
+    col1, col2, col3 = st.columns([3, 3, 3])
     with col1:
-        st.markdown(f"**{jogador['posicao']}**")
+        filtro_nome = st.text_input("Filtrar por nome").strip().lower()
     with col2:
-        st.markdown(f"**{jogador['nome']}**")
+        filtro_posicao = st.selectbox("Filtrar por posição", [
+            "Todas",
+            "Goleiro (GL)", "Lateral direito (LD)", "Zagueiro (ZAG)", "Lateral esquerdo (LE)",
+            "Volante (VOL)", "Meio campo (MC)", "Meia direita (MD)", "Meia esquerda (ME)",
+            "Ponta direita (PD)", "Ponta esquerda (PE)", "Segundo atacante (SA)", "Centroavante (CA)"
+        ])
     with col3:
-        st.markdown(f"⭐ {jogador['overall']}")
-    with col4:
-        valor = jogador['valor']
-        st.markdown(f"💰 R$ {valor:,.0f}".replace(",", "."))
-    with col5:
-        if mercado_aberto:
-            if st.button("💸 Vender", key=jogador["id_doc"]):
-                try:
-                    # Calcula valor recebido (70%)
-                    valor_recebido = int(valor * 0.7)
+        ordenacao = st.selectbox("Ordenar por", ["Maior Overall", "Menor Overall", "Maior Valor", "Menor Valor"])
 
-                    # Atualiza saldo do time
-                    time_ref = db.collection("times").document(id_time)
-                    time_doc = time_ref.get()
-                    saldo_atual = time_doc.to_dict().get("saldo", 0)
-                    novo_saldo = saldo_atual + valor_recebido
-                    time_ref.update({"saldo": novo_saldo})
+    filtrado = []
+    for jogador in elenco:
+        if filtro_nome and filtro_nome not in jogador["nome"].lower():
+            continue
+        if filtro_posicao != "Todas" and jogador["posicao"] != filtro_posicao:
+            continue
+        filtrado.append(jogador)
 
-                    # Remove do elenco
-                    db.collection("times").document(id_time).collection("elenco").document(jogador["id_doc"]).delete()
+    if ordenacao == "Maior Overall":
+        filtrado.sort(key=lambda x: x.get("overall", 0), reverse=True)
+    elif ordenacao == "Menor Overall":
+        filtrado.sort(key=lambda x: x.get("overall", 0))
+    elif ordenacao == "Maior Valor":
+        filtrado.sort(key=lambda x: x.get("valor", 0), reverse=True)
+    elif ordenacao == "Menor Valor":
+        filtrado.sort(key=lambda x: x.get("valor", 0))
 
-                    # Adiciona ao mercado com valor cheio
-                    jogador_para_mercado = {
-                        "nome": jogador["nome"],
-                        "posicao": jogador["posicao"],
-                        "overall": jogador["overall"],
-                        "valor": jogador["valor"],
-                        "time_origem": nome_time,
-                        "nacionalidade": jogador.get("nacionalidade", "N/A")
-                    }
-                    db.collection("mercado_transferencias").add(jogador_para_mercado)
+    df = pd.DataFrame(filtrado)
+    if df.empty:
+        st.warning("Nenhum jogador encontrado com os filtros selecionados.")
+    else:
+        df["valor_formatado"] = df["valor"].apply(lambda x: f"R$ {x:,.0f}".replace(",", ".") if pd.notnull(x) else "N/A")
+        df = df[["posicao", "nome", "overall", "valor_formatado"]]
+        df.columns = ["Posição", "Nome", "Overall", "Valor"]
+        st.dataframe(df, use_container_width=True)
 
-                    # Registra movimentação
-                    registrar_movimentacao(db, id_time, "entrada", f"Venda de {jogador['nome']} ao mercado", valor_recebido, jogador["nome"])
+# =========================
+# 🧠 ABA 2 - TÁTICA
+# =========================
+with aba[1]:
+    st.markdown("### 🧠 Formação Tática")
 
-                    st.success(f"{jogador['nome']} foi vendido ao mercado por R$ {valor_recebido:,.0f}".replace(",", "."))
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Erro ao vender jogador: {e}")
-        else:
-            st.markdown("🔒 Mercado Fechado")
+    # Posições da formação padrão 4-3-3
+    posicoes_taticas = [
+        "GL", "LD", "ZAG1", "ZAG2", "LE",
+        "VOL", "MC", "ME",
+        "PD", "SA", "PE"
+    ]
+
+    nomes_jogadores = [j["nome"] for j in elenco]
+
+    # 🔄 Carrega formação salva se existir
+    formacao_salva = db.collection("times").document(id_time).get().to_dict().get("formacao", {})
+    formacao = {}
+
+    colunas = st.columns(5)
+    for i, pos in enumerate(posicoes_taticas):
+        with colunas[i % 5]:
+            formacao[pos] = st.selectbox(
+                f"{pos}",
+                options=[""] + nomes_jogadores,
+                index=([""] + nomes_jogadores).index(formacao_salva.get(pos, "")) if formacao_salva.get(pos, "") in nomes_jogadores else 0,
+                key=f"form_{pos}"
+            )
+
+    if st.button("💾 Salvar Formação"):
+        try:
+            db.collection("times").document(id_time).update({"formacao": formacao})
+            st.success("✅ Formação salva com sucesso!")
+        except Exception as e:
+            st.error(f"Erro ao salvar formação: {e}")
