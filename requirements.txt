@@ -3,3 +3,4 @@ firebase-admin
 google-cloud-firestore
 google-auth
 streamlit-extras
+openpyxl
