@@ -44,20 +44,9 @@ if botao_login:
                 st.session_state["usuario"] = dados.get("usuario")
                 st.session_state["usuario_id"] = usuario_encontrado.id
 
-                # 🔎 Verifica o time vinculado a esse usuário
-                id_time = dados.get("id_time")
-                if not id_time:
-                    st.error("⚠️ Nenhum time vinculado a este usuário.")
-                    st.stop()
-
-                # 🔎 Busca o nome do time
-                time_doc = db.collection("times").document(id_time).get()
-                if not time_doc.exists:
-                    st.error("⚠️ Time vinculado não encontrado no banco de dados.")
-                    st.stop()
-
-                st.session_state["id_time"] = id_time
-                st.session_state["nome_time"] = time_doc.to_dict().get("nome", "Sem Nome")
+                # ✅ Pega id e nome do time diretamente do usuário
+                st.session_state["id_time"] = dados.get("id_time")
+                st.session_state["nome_time"] = dados.get("nome_time", "Sem Nome")
 
                 st.success("✅ Login realizado com sucesso!")
                 st.rerun()
