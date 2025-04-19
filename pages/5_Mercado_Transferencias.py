@@ -26,9 +26,10 @@ if "usuario_id" not in st.session_state or not st.session_state.usuario_id:
 id_usuario = st.session_state.usuario_id
 id_time = st.session_state.id_time
 nome_time = st.session_state.nome_time
+email_usuario = st.session_state.get("usuario", "")
 
-# 👑 Verifica se é admin
-admin_ref = db.collection("admins").document(id_usuario).get()
+# 👑 Verifica se é admin por e-mail
+admin_ref = db.collection("admins").document(email_usuario).get()
 eh_admin = admin_ref.exists
 
 # ⚙️ Controle de mercado (admin)
@@ -49,12 +50,12 @@ if eh_admin:
             st.success("✅ Mercado aberto com sucesso.")
             st.rerun()
 
-# 💵 Saldo do time
+# 💰 Saldo
 saldo_time = db.collection("times").document(id_time).get().to_dict().get("saldo", 0)
 st.title("🛒 Mercado de Transferências")
 st.markdown(f"### 💰 Saldo atual: **R$ {saldo_time:,.0f}**".replace(",", "."))
 
-# 🔎 Filtros
+# 🔍 Filtros
 st.markdown("### 🔍 Filtros de Pesquisa")
 col1, col2, col3 = st.columns(3)
 with col1:
@@ -64,7 +65,7 @@ with col2:
 with col3:
     filtro_valor = st.slider("Valor máximo (R$)", 0, 300_000_000, 300_000_000, step=1_000_000)
 
-# 📦 Busca jogadores do mercado
+# 📦 Carrega jogadores do mercado
 mercado_ref = db.collection("mercado_transferencias").stream()
 todos_jogadores = []
 for doc in mercado_ref:
@@ -84,9 +85,9 @@ for j in todos_jogadores:
         continue
     jogadores_filtrados.append(j)
 
-# 📝 Exibição
 st.markdown(f"#### 🎯 Resultados: {len(jogadores_filtrados)} jogadores disponíveis")
 
+# 📋 Exibição
 if not jogadores_filtrados:
     st.info("Nenhum jogador disponível com os filtros selecionados.")
 else:
