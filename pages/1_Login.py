@@ -39,7 +39,7 @@ if botao_login:
                 st.session_state["usuario_id"] = usuario_encontrado.id        # salva o ID do documento
 
                 st.success("✅ Login realizado com sucesso!")
-                st.switch_page("pages/3_Home.py")
+                st.switch_page("4_Elenco")  # ✅ redireciona para tela Elenco (multipage)
             else:
                 st.error("Usuário ou senha inválidos.")
         except Exception as e:
