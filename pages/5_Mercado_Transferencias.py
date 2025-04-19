@@ -51,11 +51,11 @@ if eh_admin:
 
 # 💵 Saldo do time
 saldo_time = db.collection("times").document(id_time).get().to_dict().get("saldo", 0)
-st.title("Mercado de Transferências")
-st.markdown(f"### Saldo atual: **R$ {saldo_time:,.0f}**".replace(",", "."))
+st.title("🛒 Mercado de Transferências")
+st.markdown(f"### 💰 Saldo atual: **R$ {saldo_time:,.0f}**".replace(",", "."))
 
 # 🔎 Filtros
-st.markdown("### Filtros")
+st.markdown("### 🔍 Filtros de Pesquisa")
 col1, col2, col3 = st.columns(3)
 with col1:
     filtro_nome = st.text_input("Nome do jogador").strip().lower()
@@ -63,18 +63,6 @@ with col2:
     filtro_posicao = st.selectbox("Posição", ["Todas", "GL", "LD", "ZAG", "LE", "VOL", "MC", "MD", "ME", "PD", "PE", "SA", "CA"])
 with col3:
     filtro_valor = st.slider("Valor máximo (R$)", 0, 300_000_000, 300_000_000, step=1_000_000)
-
-# 🔢 Paginação
-if "pagina_mercado" not in st.session_state:
-    st.session_state["pagina_mercado"] = 1
-
-col_pag1, col_pag2, col_pag3 = st.columns([1, 1, 5])
-with col_pag1:
-    if st.button("Anterior", disabled=st.session_state["pagina_mercado"] <= 1):
-        st.session_state["pagina_mercado"] -= 1
-with col_pag2:
-    if st.button("Próxima"):
-        st.session_state["pagina_mercado"] += 1
 
 # 📦 Busca jogadores do mercado
 mercado_ref = db.collection("mercado_transferencias").stream()
@@ -96,22 +84,13 @@ for j in todos_jogadores:
         continue
     jogadores_filtrados.append(j)
 
-# 📄 Paginação
-por_pagina = 20
-total_paginas = max(1, (len(jogadores_filtrados) + por_pagina - 1) // por_pagina)
-pagina = st.session_state["pagina_mercado"]
-pagina = max(1, min(pagina, total_paginas))
-inicio = (pagina - 1) * por_pagina
-fim = inicio + por_pagina
-jogadores_exibidos = jogadores_filtrados[inicio:fim]
-
-st.markdown(f"#### Mostrando página {pagina} de {total_paginas} | Total de jogadores: {len(jogadores_filtrados)}")
-
 # 📝 Exibição
-if not jogadores_exibidos:
+st.markdown(f"#### 🎯 Resultados: {len(jogadores_filtrados)} jogadores disponíveis")
+
+if not jogadores_filtrados:
     st.info("Nenhum jogador disponível com os filtros selecionados.")
 else:
-    for j in jogadores_exibidos:
+    for j in jogadores_filtrados:
         nome = j.get("nome", "Desconhecido")
         posicao = j.get("posicao", "Desconhecida")
         overall = j.get("overall", "N/A")
@@ -119,45 +98,43 @@ else:
         time_origem = j.get("time_origem", "N/A")
         nacionalidade = j.get("nacionalidade", "N/A")
 
-        col1, col2, col3, col4, col5, col6, col7, col8 = st.columns([2, 2, 1, 2, 2, 1, 1, 1])
+        st.markdown("---")
+        col1, col2, col3, col4, col5 = st.columns([4, 2, 2, 2, 2])
         with col1:
-            st.write(nome)
+            st.markdown(f"**👤 {nome}** ({posicao}) - {nacionalidade}")
+            st.markdown(f"Origem: `{time_origem}`")
         with col2:
-            st.write(posicao)
+            st.markdown(f"⭐ Overall: **{overall}**")
         with col3:
-            st.write(overall)
+            st.markdown(f"💰 Valor: **R$ {valor:,.0f}**".replace(",", "."))
         with col4:
-            st.write(f"R$ {valor:,.0f}".replace(",", "."))
+            if mercado_aberto:
+                if st.button("✅ Comprar", key=f"comprar_{j['id_doc']}"):
+                    if saldo_time < valor:
+                        st.error("❌ Saldo insuficiente.")
+                    else:
+                        try:
+                            db.collection("mercado_transferencias").document(j["id_doc"]).delete()
+                            db.collection("times").document(id_time).collection("elenco").add({
+                                "nome": nome,
+                                "posicao": posicao,
+                                "overall": overall,
+                                "valor": valor,
+                                "time_origem": time_origem,
+                                "nacionalidade": nacionalidade
+                            })
+                            db.collection("times").document(id_time).update({"saldo": saldo_time - valor})
+                            registrar_movimentacao(db, id_time, "saida", "Compra no mercado", valor, jogador=nome)
+                            st.success(f"{nome} comprado com sucesso!")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Erro na compra: {e}")
+            else:
+                st.markdown("🔒 Mercado Fechado")
+
         with col5:
-            st.write(time_origem)
-        with col6:
-            st.write(nacionalidade)
-        with col7:
-            if st.button("Comprar", key=f"comprar_{j['id_doc']}"):
-                if not mercado_aberto:
-                    st.error("❌ Desculpe, o mercado está fechado no momento.")
-                elif saldo_time < valor:
-                    st.error("Saldo insuficiente.")
-                else:
-                    try:
-                        db.collection("mercado_transferencias").document(j["id_doc"]).delete()
-                        db.collection("times").document(id_time).collection("elenco").add({
-                            "nome": nome,
-                            "posicao": posicao,
-                            "overall": overall,
-                            "valor": valor,
-                            "time_origem": time_origem,
-                            "nacionalidade": nacionalidade
-                        })
-                        db.collection("times").document(id_time).update({"saldo": saldo_time - valor})
-                        registrar_movimentacao(db, id_time, nome, "Compra", "Mercado", valor)
-                        st.success(f"{nome} comprado com sucesso!")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Erro na compra: {e}")
-        with col8:
             if eh_admin:
-                if st.button("Excluir", key=f"excluir_{j['id_doc']}"):
+                if st.button("🗑️ Excluir", key=f"excluir_{j['id_doc']}"):
                     try:
                         db.collection("mercado_transferencias").document(j["id_doc"]).delete()
                         st.success(f"{nome} removido do mercado.")
@@ -165,18 +142,20 @@ else:
                     except Exception as e:
                         st.error(f"Erro ao excluir: {e}")
 
-# 📜 Histórico de transferências
-with st.expander("Ver histórico de transferências"):
+# 📜 Histórico
+with st.expander("📜 Ver histórico de transferências"):
     mov_ref = db.collection("times").document(id_time).collection("movimentacoes").order_by("timestamp", direction=gc_firestore.Query.DESCENDING).stream()
-    historico = [{"tipo": doc.to_dict().get("tipo"), "jogador": doc.to_dict().get("jogador"), "valor": doc.to_dict().get("valor")} for doc in mov_ref]
+    historico = []
+    for doc in mov_ref:
+        d = doc.to_dict()
+        historico.append({
+            "Tipo": d.get("tipo"),
+            "Jogador": d.get("jogador", "N/A"),
+            "Valor": f"R$ {d.get('valor', 0):,.0f}".replace(",", ".")
+        })
 
     if not historico:
         st.info("Nenhuma movimentação registrada.")
     else:
         df_hist = pd.DataFrame(historico)
-        df_hist["valor"] = df_hist["valor"].apply(lambda x: f"R$ {x:,.0f}".replace(",", ".")) if not df_hist.empty else "-"
-        df_hist.columns = ["Tipo", "Jogador", "Valor"]
         st.dataframe(df_hist, use_container_width=True)
-
-
-
