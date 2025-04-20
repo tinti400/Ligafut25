@@ -3,11 +3,9 @@ import pandas as pd
 from google.oauth2 import service_account
 from google.cloud import firestore
 
-st.set_page_config(page_title="📥 Importar Jogadores - Mercado", layout="wide")
+st.set_page_config(page_title="Importar Mercado", layout="wide")
 
-st.title("📥 Importar Jogadores para o Mercado")
-
-# 🔐 Conexão com Firebase
+# 🔐 Firebase
 if "firebase" not in st.session_state:
     try:
         cred = service_account.Credentials.from_service_account_info(st.secrets["firebase"])
@@ -19,36 +17,68 @@ if "firebase" not in st.session_state:
 else:
     db = st.session_state["firebase"]
 
-# 📤 Upload de arquivo Excel
-arquivo = st.file_uploader("Selecione o arquivo Excel com os jogadores", type=["xlsx"])
+# 👑 Verifica se é admin por e-mail
+email_usuario = st.session_state.get("usuario", "")
+if not email_usuario or "/" in email_usuario:
+    st.error("⚠️ E-mail inválido para verificação de admin.")
+    st.stop()
+
+admin_ref = db.collection("admins").document(email_usuario).get()
+if not admin_ref.exists:
+    st.warning("🔒 Acesso permitido apenas para administradores.")
+    st.stop()
+
+# 🧭 Título
+st.markdown("<h1 style='text-align: center;'>📦 Importar Jogadores para o Mercado</h1><hr>", unsafe_allow_html=True)
+
+# 📤 Upload do arquivo
+arquivo = st.file_uploader("📂 Selecione um arquivo .xlsx com os jogadores", type=["xlsx"])
 
 if arquivo:
     try:
         df = pd.read_excel(arquivo)
-        st.success(f"✅ Planilha carregada com {len(df)} jogadores.")
-        st.dataframe(df)
 
-        if st.button("📤 Enviar jogadores ao Mercado"):
-            sucesso, erro = 0, 0
+        # Tratamento de colunas com nomes diferentes
+        colunas_esperadas = {
+            "foto": "foto",
+            "nome": "nome",
+            "posicao": "posicao",
+            "posição": "posicao",
+            "overall": "overall",
+            "valor": "valor",
+            "nacionalidade": "nacionalidade",
+            "time de origem": "time_origem",
+            "time_origem": "time_origem"
+        }
+
+        df.columns = [colunas_esperadas.get(col.lower(), col.lower()) for col in df.columns]
+
+        obrigatorias = ["nome", "posicao", "overall", "valor", "nacionalidade", "time_origem"]
+        if not all(col in df.columns for col in obrigatorias):
+            st.error(f"❌ A planilha deve conter as colunas: {', '.join(obrigatorias)}")
+            st.stop()
+
+        with st.expander("👀 Visualizar Jogadores Importados"):
+            st.dataframe(df)
+
+        if st.button("🚀 Enviar jogadores ao mercado"):
+            count = 0
             for _, row in df.iterrows():
                 try:
-                    jogador = {
-                        "nome": row["nome"],
-                        "posicao": row["posicao"],
+                    db.collection("mercado_transferencias").add({
+                        "nome": str(row["nome"]),
+                        "posicao": str(row["posicao"]),
                         "overall": int(row["overall"]),
-                        "valor": int(row["valor"]),
-                        "nacionalidade": row.get("nacionalidade", "N/A"),
-                        "time_origem": row.get("time_origem", "N/A")
-                    }
-                    db.collection("mercado_transferencias").add(jogador)
-                    sucesso += 1
+                        "valor": float(row["valor"]),
+                        "nacionalidade": str(row["nacionalidade"]),
+                        "time_origem": str(row["time_origem"]),
+                        "foto": str(row["foto"]) if "foto" in row and pd.notna(row["foto"]) else ""
+                    })
+                    count += 1
                 except Exception as e:
-                    erro += 1
                     st.error(f"Erro ao adicionar jogador: {e}")
-            st.success(f"✅ {sucesso} jogadores importados com sucesso.")
-            if erro > 0:
-                st.warning(f"⚠️ {erro} jogadores falharam na importação.")
+            st.success(f"✅ {count} jogadores adicionados ao mercado com sucesso!")
+            st.rerun()
+
     except Exception as e:
         st.error(f"❌ Erro ao processar o arquivo: {e}")
-else:
-    st.info("⬆️ Faça o upload de um arquivo Excel (.xlsx) com os jogadores para enviar ao mercado.")
