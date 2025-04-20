@@ -1,7 +1,7 @@
 import streamlit as st
 from google.oauth2 import service_account
 from google.cloud import firestore
-from datetime import datetime  # Necessário para formatar datas corretamente
+from datetime import datetime
 
 st.set_page_config(page_title="Histórico de Transferências", layout="wide")
 
@@ -17,7 +17,7 @@ if "firebase" not in st.session_state:
 else:
     db = st.session_state["firebase"]
 
-# Verifica login
+# ✅ Verifica login
 if "usuario_id" not in st.session_state or not st.session_state["usuario_id"]:
     st.warning("Você precisa estar logado para acessar esta página.")
     st.stop()
@@ -26,7 +26,7 @@ id_time = st.session_state["id_time"]
 
 st.title("📜 Histórico de Transferências")
 
-# 📥 Coleta as movimentações do Firestore
+# 🔄 Recupera movimentações
 mov_ref = (
     db.collection("times")
     .document(id_time)
@@ -37,6 +37,7 @@ mov_ref = (
 
 movimentacoes = [doc.to_dict() for doc in mov_ref]
 
+# 📋 Exibe histórico
 if not movimentacoes:
     st.info("Nenhuma movimentação registrada.")
 else:
@@ -47,14 +48,21 @@ else:
         valor = mov.get("valor", 0)
         data = mov.get("data", None)
 
+        # 🔁 Formata data
         if isinstance(data, datetime):
             data_str = data.strftime('%d/%m/%Y %H:%M')
         else:
             data_str = "Data não disponível"
 
+        # 💵 Trata valor
+        if isinstance(valor, (int, float)):
+            valor_str = f"R$ {valor:,.0f}".replace(",", ".")
+        else:
+            valor_str = "Valor indisponível"
+
         st.markdown("---")
         st.markdown(f"**👤 Jogador:** {jogador}")
         st.markdown(f"**📂 Categoria:** {categoria}")
         st.markdown(f"**💬 Tipo:** {tipo}")
-        st.markdown(f"**💰 Valor:** R$ {valor:,.0f}".replace(",", "."))
+        st.markdown(f"**💰 Valor:** {valor_str}")
         st.markdown(f"**📅 Data:** {data_str}")
