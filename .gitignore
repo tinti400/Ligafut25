@@ -1,15 +1,31 @@
+# 🔐 Credenciais sensíveis
 credenciais.json
+.streamlit/secrets.toml
 .streamlit/credenciais.json
+
+# 🔁 Caches e arquivos compilados
 __pycache__/
-.env
-venv/
 *.pyc
 *.pyo
 *.pyd
-*.sqlite3
+
+# 🧪 Ambientes virtuais
+.env
+venv/
+
+# 🧾 Logs, banco e arquivos temporários
 *.log
-c r e d e n c i a i s . j s o n 
- 
- . s t r e a m l i t / s e c r e t s . t o m l 
- 
- .streamlit/secrets.toml
+*.sqlite3
+*~$*
+
+# 🧮 Dados e planilhas
+*.xlsx
+*.csv
+pages/dados/
+
+# 🧰 Arquivos de backup/zip
+*.zip
+
+# 💻 Arquivos de sistema
+.DS_Store
+Thumbs.db

@@ -62,18 +62,22 @@ if eh_admin:
 
 # 💰 Saldo
 saldo_time = db.collection("times").document(id_time).get().to_dict().get("saldo", 0)
-st.title("🛍️ Mercado de Transferências")
+st.title("🛒 Mercado de Transferências")
 st.markdown(f"### 💰 Saldo atual: **R$ {saldo_time:,.0f}**".replace(",", "."))
 
 # 🔍 Filtros
 st.markdown("### 🔍 Filtros de Pesquisa")
-col1, col2, col3, col4 = st.columns(4)
+col1, col2, col3, col4 = st.columns([2, 1, 1, 2])
 with col1:
     filtro_nome = st.text_input("Nome do jogador").strip().lower()
 with col2:
     filtro_posicao = st.selectbox("Posição", ["Todas", "GL", "LD", "ZAG", "LE", "VOL", "MC", "MD", "ME", "PD", "PE", "SA", "CA"])
 with col3:
-    filtro_valor = st.slider("Valor máximo (R$)", 0, 300_000_000, 300_000_000, step=1_000_000)
+    filtro_valor_manual = st.text_input("Valor máximo (R$)", "1000000000")
+    try:
+        filtro_valor = int(filtro_valor_manual.replace(".", "").replace(",", "").replace("R$", "").strip())
+    except:
+        filtro_valor = 1_000_000_000
 with col4:
     filtro_ordenacao = st.selectbox("Ordenar por", ["Nenhum", "Maior Overall", "Menor Overall", "Maior Valor", "Menor Valor"])
 
@@ -84,14 +88,9 @@ for doc in mercado_ref:
     j = doc.to_dict()
     j["id_doc"] = doc.id
     if j.get("nome") and j.get("valor") is not None:
-        # Trata campos alternativos de posicao
-        if "posicao" not in j and "posição" in j:
-            j["posicao"] = j["posição"]
-        elif "posição" not in j and "posicao" in j:
-            j["posição"] = j["posicao"]
         todos_jogadores.append(j)
 
-# 🌟 Aplica filtros
+# 🎯 Aplica filtros
 jogadores_filtrados = []
 for j in todos_jogadores:
     if filtro_nome and filtro_nome not in j["nome"].lower():
@@ -112,7 +111,7 @@ elif filtro_ordenacao == "Maior Valor":
 elif filtro_ordenacao == "Menor Valor":
     jogadores_filtrados.sort(key=lambda x: x.get("valor", 0))
 
-# 🔣 Paginação
+# 🔢 Paginação
 if "pagina_mercado" not in st.session_state:
     st.session_state["pagina_mercado"] = 1
 
@@ -126,7 +125,7 @@ inicio = (pagina - 1) * por_pagina
 fim = inicio + por_pagina
 jogadores_pagina = jogadores_filtrados[inicio:fim]
 
-# 🔄 Navegação
+# 🔄 Navegação entre páginas
 col_nav1, col_nav2, col_nav3 = st.columns([1, 2, 1])
 with col_nav1:
     if st.button("⏪ Anterior", disabled=pagina <= 1):
