@@ -1,13 +1,18 @@
 import random
+import streamlit as st
 from google.cloud import firestore
 from google.oauth2 import service_account
 from datetime import datetime
 
-# Conectar ao Firebase (local)
-cred = service_account.Credentials.from_service_account_file("credenciais.json")
-db = firestore.Client(credentials=cred, project="ligafut-a0056")
+# 🔐 Conecta ao Firebase usando st.secrets
+if "firebase" not in st.session_state:
+    cred = service_account.Credentials.from_service_account_info(st.secrets["firebase"])
+    db = firestore.Client(credentials=cred, project=st.secrets["firebase"]["project_id"])
+    st.session_state["firebase"] = db
+else:
+    db = st.session_state["firebase"]
 
-# ID da sua liga no Firestore
+# ID da liga
 id_liga = "VUnsRMAPOc9Sj9n5BenE"
 colecao_rodadas = f"ligas/{id_liga}/rodadas_divisao_1"
 
@@ -55,6 +60,4 @@ for i, jogos in enumerate(todas_rodadas, start=1):
         "criado_em": datetime.utcnow()
     })
 
-print(f"✅ {len(todas_rodadas)} rodadas geradas com sucesso.")
-
-
+st.success(f"✅ {len(todas_rodadas)} rodadas geradas com sucesso.")
