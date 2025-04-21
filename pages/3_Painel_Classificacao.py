@@ -1,85 +1,80 @@
 import streamlit as st
-from google.oauth2 import service_account
 from google.cloud import firestore
-from utils import verificar_login, calcular_classificacao
 from datetime import datetime
 
-st.set_page_config(page_title="Classificação - LigaFut", layout="wide")
+def verificar_login():
+    if "usuario_id" not in st.session_state or not st.session_state["usuario_id"]:
+        st.warning("Você precisa estar logado para acessar o sistema.")
+        st.stop()
 
-# Firebase
-if "firebase" not in st.session_state:
-    cred = service_account.Credentials.from_service_account_info(st.secrets["firebase"])
-    db = firestore.Client(credentials=cred, project=st.secrets["firebase"]["project_id"])
-    st.session_state["firebase"] = db
-else:
+def calcular_classificacao(jogos, times_ref):
+    tabela = {}
+
+    for time in times_ref:
+        tabela[time.id] = {
+            "nome": time.to_dict().get("nome", "Desconhecido"),
+            "pontos": 0,
+            "v": 0,
+            "e": 0,
+            "d": 0,
+            "gp": 0,
+            "gc": 0,
+            "sg": 0,
+        }
+
+    for jogo in jogos:
+        mandante = jogo.get("mandante")
+        visitante = jogo.get("visitante")
+        gm = jogo.get("gols_mandante")
+        gv = jogo.get("gols_visitante")
+
+        if None in [mandante, visitante, gm, gv]:
+            continue
+
+        gm = int(gm)
+        gv = int(gv)
+
+        tabela[mandante]["gp"] += gm
+        tabela[mandante]["gc"] += gv
+        tabela[mandante]["sg"] += gm - gv
+
+        tabela[visitante]["gp"] += gv
+        tabela[visitante]["gc"] += gm
+        tabela[visitante]["sg"] += gv - gm
+
+        if gm > gv:
+            tabela[mandante]["pontos"] += 3
+            tabela[mandante]["v"] += 1
+            tabela[visitante]["d"] += 1
+        elif gm < gv:
+            tabela[visitante]["pontos"] += 3
+            tabela[visitante]["v"] += 1
+            tabela[mandante]["d"] += 1
+        else:
+            tabela[mandante]["pontos"] += 1
+            tabela[visitante]["pontos"] += 1
+            tabela[mandante]["e"] += 1
+            tabela[visitante]["e"] += 1
+
+    return sorted(
+        tabela.items(),
+        key=lambda x: (x[1]["pontos"], x[1]["sg"], x[1]["gp"]),
+        reverse=True
+    )
+
+def registrar_movimentacao(id_time, jogador, categoria, tipo, valor):
+    if valor <= 0:
+        st.warning("❗ Valor inválido para movimentação.")
+        return
+
     db = st.session_state["firebase"]
+    ref = db.collection("times").document(id_time).collection("movimentacoes")
+    ref.add({
+        "jogador": jogador,
+        "categoria": categoria,
+        "tipo": tipo,
+        "valor": valor,
+        "data": datetime.utcnow()
+    })
 
-verificar_login()
 
-id_liga = "VUnsRMAPOc9Sj9n5BenE"
-colecao_rodadas = f"ligas/{id_liga}/rodadas_divisao_1"
-colecao_times = "times"
-
-st.title("📊 Tabela de Classificação")
-
-# Carrega rodadas ordenadas
-rodadas = db.collection(colecao_rodadas).order_by("numero").stream()
-rodadas = [r.to_dict() for r in rodadas]
-
-# Busca nomes dos times
-times_ref = db.collection(colecao_times).stream()
-times_dict = {doc.id: doc.to_dict().get("nome", "Desconhecido") for doc in times_ref}
-
-if not rodadas:
-    st.warning("⚠️ Nenhuma rodada encontrada.")
-    st.stop()
-
-rodada_atual = rodadas[-1]  # Última rodada
-st.subheader(f"📅 Resultados da Rodada {rodada_atual['numero']}")
-
-jogos = rodada_atual.get("jogos", [])
-
-gols_mandante = []
-gols_visitante = []
-
-for i, jogo in enumerate(jogos):
-    col1, col2, col3, col4, col5 = st.columns([3, 1, 1, 1, 3])
-    with col1:
-        st.markdown(f"**{times_dict.get(jogo['mandante'], 'Desconhecido')}**")
-    with col2:
-        gols_m = st.number_input("Gols", key=f"gm_{i}", min_value=0, value=jogo.get("gols_mandante", 0))
-    with col3:
-        st.markdown("x")
-    with col4:
-        gols_v = st.number_input(" ", key=f"gv_{i}", min_value=0, value=jogo.get("gols_visitante", 0))
-    with col5:
-        st.markdown(f"**{times_dict.get(jogo['visitante'], 'Desconhecido')}**")
-
-    gols_mandante.append(gols_m)
-    gols_visitante.append(gols_v)
-
-# Botão para salvar
-if st.button("💾 Salvar Resultados e Atualizar Classificação"):
-    try:
-        for i, jogo in enumerate(jogos):
-            jogo["gols_mandante"] = gols_mandante[i]
-            jogo["gols_visitante"] = gols_visitante[i]
-
-        doc_ref = db.collection(colecao_rodadas).document(f"rodada_{rodada_atual['numero']}")
-        doc_ref.update({"jogos": jogos})
-
-        st.success("✅ Resultados salvos com sucesso!")
-        st.rerun()
-    except Exception as e:
-        st.error(f"Erro ao salvar os resultados: {e}")
-
-# Classificação
-st.markdown("---")
-st.subheader("🏆 Classificação Atualizada")
-
-classificacao = calcular_classificacao(rodadas, times_dict)
-
-if not classificacao:
-    st.warning("⚠️ Nenhuma classificação disponível.")
-else:
-    st.dataframe(classificacao, use_container_width=True)
