@@ -18,9 +18,10 @@ if "firebase" not in st.session_state:
 else:
     db = st.session_state["firebase"]
 
-# ✅ Verifica se o usuário é admin
-id_usuario = st.session_state.get("usuario_id", "")
-admin_ref = db.collection("admins").document(id_usuario).get()
+# ✅ Verifica se o usuário é admin pelo e-mail
+usuario_email = st.session_state.get("usuario", "")
+admin_ref = db.collection("admins").document(usuario_email).get()
+
 if not admin_ref.exists:
     st.warning("🔒 Acesso restrito a administradores.")
     st.stop()
@@ -29,10 +30,10 @@ if not admin_ref.exists:
 id_liga = "VUnsRMAPOc9Sj9n5BenE"
 colecao_rodadas = f"ligas/{id_liga}/rodadas_divisao_1"
 
-st.markdown("<h2 style='text-align: center;'>📆 Gerar Rodadas Estilo Brasileirão</h2><hr>", unsafe_allow_html=True)
+st.markdown("<h2 style='text-align: center;'>🗖️ Gerar Rodadas Estilo Brasileirão</h2><hr>", unsafe_allow_html=True)
 st.warning("⚠️ Isso irá apagar todas as rodadas atuais e gerar um novo calendário completo.")
 
-if st.button("🧠 Gerar Rodadas Automáticas"):
+if st.button("🧐 Gerar Rodadas Automáticas"):
     try:
         # Apaga rodadas anteriores
         for doc in db.collection(colecao_rodadas).stream():
