@@ -1,10 +1,12 @@
-import random
 import streamlit as st
-from google.cloud import firestore
 from google.oauth2 import service_account
+from google.cloud import firestore
+from utils import verificar_login, calcular_classificacao
 from datetime import datetime
 
-# 🔐 Conecta ao Firebase usando st.secrets
+st.set_page_config(page_title="Classificação - LigaFut", layout="wide")
+
+# Firebase
 if "firebase" not in st.session_state:
     cred = service_account.Credentials.from_service_account_info(st.secrets["firebase"])
     db = firestore.Client(credentials=cred, project=st.secrets["firebase"]["project_id"])
@@ -12,52 +14,72 @@ if "firebase" not in st.session_state:
 else:
     db = st.session_state["firebase"]
 
-# ID da liga
+verificar_login()
+
 id_liga = "VUnsRMAPOc9Sj9n5BenE"
 colecao_rodadas = f"ligas/{id_liga}/rodadas_divisao_1"
+colecao_times = "times"
 
-# Apaga todas as rodadas anteriores
-for doc in db.collection(colecao_rodadas).stream():
-    doc.reference.delete()
+st.title("📊 Tabela de Classificação")
 
-# Pega os times
-times_ref = db.collection("times").stream()
-times = [(doc.id, doc.to_dict().get("nome", "Time")) for doc in times_ref]
-ids_times = [t[0] for t in times]
+# Carrega rodadas ordenadas
+rodadas = db.collection(colecao_rodadas).order_by("numero").stream()
+rodadas = [r.to_dict() for r in rodadas]
 
-def gerar_turno(times_ids):
-    random.shuffle(times_ids)
-    n = len(times_ids)
-    rodadas = []
+# Busca nomes dos times
+times_ref = db.collection(colecao_times).stream()
+times_dict = {doc.id: doc.to_dict().get("nome", "Desconhecido") for doc in times_ref}
 
-    if n % 2 != 0:
-        times_ids.append(None)  # Adiciona um "bye" se número ímpar
+if not rodadas:
+    st.warning("⚠️ Nenhuma rodada encontrada.")
+    st.stop()
 
-    for i in range(n - 1):
-        rodada = []
-        for j in range(len(times_ids) // 2):
-            t1 = times_ids[j]
-            t2 = times_ids[-(j + 1)]
-            if t1 is not None and t2 is not None:
-                rodada.append({"mandante": t1, "visitante": t2})
-        times_ids = [times_ids[0]] + [times_ids[-1]] + times_ids[1:-1]
-        rodadas.append(rodada)
+rodada_atual = rodadas[-1]  # Última rodada
+st.subheader(f"📅 Resultados da Rodada {rodada_atual['numero']}")
 
-    return rodadas
+jogos = rodada_atual.get("jogos", [])
 
-# Gera turno e returno
-turno = gerar_turno(ids_times)
-returno = [[{"mandante": jogo["visitante"], "visitante": jogo["mandante"]} for jogo in rodada] for rodada in turno]
+gols_mandante = []
+gols_visitante = []
 
-todas_rodadas = turno + returno
+for i, jogo in enumerate(jogos):
+    col1, col2, col3, col4, col5 = st.columns([3, 1, 1, 1, 3])
+    with col1:
+        st.markdown(f"**{times_dict.get(jogo['mandante'], 'Desconhecido')}**")
+    with col2:
+        gols_m = st.number_input("Gols", key=f"gm_{i}", min_value=0, value=jogo.get("gols_mandante", 0))
+    with col3:
+        st.markdown("x")
+    with col4:
+        gols_v = st.number_input(" ", key=f"gv_{i}", min_value=0, value=jogo.get("gols_visitante", 0))
+    with col5:
+        st.markdown(f"**{times_dict.get(jogo['visitante'], 'Desconhecido')}**")
 
-# Salva no Firestore
-for i, jogos in enumerate(todas_rodadas, start=1):
-    doc_ref = db.collection(colecao_rodadas).document(f"rodada_{i}")
-    doc_ref.set({
-        "numero": i,
-        "jogos": jogos,
-        "criado_em": datetime.utcnow()
-    })
+    gols_mandante.append(gols_m)
+    gols_visitante.append(gols_v)
 
-st.success(f"✅ {len(todas_rodadas)} rodadas geradas com sucesso.")
+# Botão para salvar
+if st.button("💾 Salvar Resultados e Atualizar Classificação"):
+    try:
+        for i, jogo in enumerate(jogos):
+            jogo["gols_mandante"] = gols_mandante[i]
+            jogo["gols_visitante"] = gols_visitante[i]
+
+        doc_ref = db.collection(colecao_rodadas).document(f"rodada_{rodada_atual['numero']}")
+        doc_ref.update({"jogos": jogos})
+
+        st.success("✅ Resultados salvos com sucesso!")
+        st.rerun()
+    except Exception as e:
+        st.error(f"Erro ao salvar os resultados: {e}")
+
+# Classificação
+st.markdown("---")
+st.subheader("🏆 Classificação Atualizada")
+
+classificacao = calcular_classificacao(rodadas, times_dict)
+
+if not classificacao:
+    st.warning("⚠️ Nenhuma classificação disponível.")
+else:
+    st.dataframe(classificacao, use_container_width=True)
